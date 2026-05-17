@@ -1,0 +1,94 @@
+.proximas-container {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  box-shadow: none;
+}
+.proximas-title {
+  font-family: 'Inkfree', cursive;
+  font-size: 1.5rem;
+  color: var(--postit-text);
+  margin: 0 0 12px;
+  text-align: center;
+  border-bottom: 2px dashed var(--postit-border);
+  padding-bottom: 6px;
+  transition: color 0.3s;
+}
+
+.proximas-vacio {
+  color: var(--text-secondary);
+  font-style: italic;
+  text-align: center;
+  padding: 16px;
+  transition: color 0.3s;
+}
+
+.proximas-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.proxima-card {
+  background: var(--postit-bg);
+  border-left: 5px solid #f472b6;
+  padding: 14px;
+  border-radius: 12px;
+  transition: transform 0.2s, background-color 0.3s;
+  color: var(--postit-text);
+}
+
+.proxima-card:hover {
+  transform: translateY(-3px);
+}
+
+.proxima-card.urgente {
+  background: #fee2e2;
+  border-left-color: #dc2626;
+  animation: pulso 2s infinite;
+}
+
+.proxima-card.vencida {
+  opacity: 0.5;
+  background: var(--card-bg);
+}
+
+@keyframes pulso {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  50%      { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+}
+
+.proxima-fecha {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.proxima-nombre {
+  font-weight: bold;
+  color: #1f2937;
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+}
+
+.proxima-tema {
+  font-size: 0.85rem;
+  color: #475569;
+  font-style: italic;
+  margin-bottom: 8px;
+}
+
+.proxima-countdown {
+  font-weight: bold;
+  color: #be185d;
+  font-size: 0.95rem;
+}
+
+.proxima-card {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.proxima-card:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}

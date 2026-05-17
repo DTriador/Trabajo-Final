@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Fuentes */
+@font-face {
+  font-family: 'Inkfree';
+  src: url('/fonts/Inkfree.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'KG Midnight Memories';
+  src: url('/fonts/KG Midnight Memories.ttf') format('truetype');
+}
+
+/* Variables de tema */
+:root {
+  --bg-primary: #f3f4f6;
+  --bg-secondary: #ffffff;
+  --text-primary: #1a1a1a;
+  --text-secondary: #666666;
+  --accent: #a5b4fc;
+  --shadow: rgba(0,0,0,0.1);
+  /* Colores específicos del dashboard */
+  --postit-bg: #fffde7;
+  --postit-text: #1f2937;
+  --postit-border: #fbc02d;
+  --card-bg: rgba(255,255,255,0.95);
+  --card-text: #374151;
+  --button-logout: #fef3c7;
+  --button-logout-text: #7c2d12;
+  --button-logout-border: #b45309;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #2d2d2d;
+  --text-primary: #ffffff;
+  --text-secondary: #cccccc;
+  --accent: #7c3aed;
+  --shadow: rgba(255,255,255,0.1);
+  /* Colores específicos en modo oscuro */
+  --postit-bg: #2d2d2d;
+  --postit-text: #ffffff;
+  --postit-border: #7c3aed;
+  --card-bg: rgba(45,45,45,0.95);
+  --card-text: #e5e5e5;
+  --button-logout: #3d3d3d;
+  --button-logout-text: #ffffff;
+  --button-logout-border: #7c3aed;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inkfree', cursive;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s, color 0.3s;
+}
+
+/* Títulos y secciones */
+h1, h2, h3, h4, h5, h6, .section-title, .card-title {
+  font-family: 'KG Midnight Memories', cursive;
+}
+
+/* Texto normal */
+p, span, div, input, textarea, button {
+  font-family: 'Inkfree', cursive;
+}
+
+/* Fondos oscuros con texto claro */
+.bg-dark, .dark-bg {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.bg-light, .light-bg {
+  background-color: var(--bg-primary);
+  color: var(--text-secondary);
+}
+
+/* Botón de tema */
+.theme-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  box-shadow: 0 2px 10px var(--shadow);
+  font-size: 18px;
+  transition: all 0.3s;
+}
+
+.theme-toggle:hover {
+  transform: scale(1.1);
+}

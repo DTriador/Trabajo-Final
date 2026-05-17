@@ -1,0 +1,104 @@
+.confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: fadeIn 0.18s ease-out;
+}
+
+.confirm-paper {
+    position: relative;
+    background-color: #fffdf6;
+    background-image:
+        linear-gradient(transparent 28px, rgba(59, 130, 246, 0.18) 29px),
+        linear-gradient(to right, rgba(220, 38, 38, 0.4) 1px, transparent 1px);
+    background-size: 100% 30px, 60px 100%;
+    background-position: 0 6px, 50px 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    box-shadow:
+        0 18px 35px rgba(15, 23, 42, 0.25),
+        0 6px 10px rgba(15, 23, 42, 0.12);
+    padding: 36px 32px 24px;
+    width: min(440px, 92vw);
+    transform: rotate(-0.4deg);
+    animation: popIn 0.22s ease-out;
+}
+
+.confirm-tape {
+    position: absolute;
+    top: -14px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-2deg);
+    width: 110px;
+    height: 26px;
+    background: rgba(253, 224, 71, 0.75);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.confirm-title {
+    margin: 0 0 12px;
+    font-size: 1.6rem;
+    color: #1e3a8a;
+    font-weight: bold;
+}
+
+.confirm-message {
+    margin: 0 0 24px;
+    font-size: 1.15rem;
+    color: #374151;
+    line-height: 1.4;
+}
+
+.confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.confirm-btn {
+    background: #ffffffc0;
+    border: 2px dashed #94a3b8;
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 1.05rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.1s ease, background-color 0.15s ease;
+}
+
+.confirm-btn:hover {
+    transform: translateY(-1px);
+}
+
+.confirm-btn-cancel {
+    color: #475569;
+}
+
+.confirm-btn-cancel:hover {
+    background: #f1f5f9;
+}
+
+.confirm-btn-ok {
+    border-style: solid;
+    background: #fff;
+    font-weight: bold;
+}
+
+.confirm-btn-ok:hover {
+    background: #fef2f2;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes popIn {
+    from { opacity: 0; transform: rotate(-0.4deg) scale(0.94); }
+    to   { opacity: 1; transform: rotate(-0.4deg) scale(1); }
+}

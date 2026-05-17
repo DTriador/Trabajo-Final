@@ -1,0 +1,14 @@
+# Entorno virtual
+venv/
+__pycache__/
+*.pyc
+
+# Variables de entorno (¡CRÍTICO!)
+.env
+
+# Archivos temporales de sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de base de datos local (si tuvieras)
+*.sqlite3

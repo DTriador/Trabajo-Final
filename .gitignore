@@ -1,0 +1,28 @@
+# ==========================================
+# REGLAS CRÍTICAS DE SEGURIDAD (Secretos)
+# ==========================================
+**/.env
+**/.env.local
+**/.env.*.local
+**/Cliente de OAuth.txt
+*.txt
+*.bak
+
+# ==========================================
+# BACKEND (Python & Almacenamiento Local)
+# ==========================================
+**/venv/
+**/__pycache__/
+**/*.pyc
+backend/storage/pdfs/
+
+# ==========================================
+# FRONTEND & ACCIDENTALES (Node.js)
+# ==========================================
+**/node_modules/
+**/dist/
+**/.DS_Store
+
+# IDEs
+.vscode/
+.idea/

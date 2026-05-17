@@ -1,0 +1,279 @@
+/* ==========================================================================
+   1. FUENTES Y VARIABLES
+   ========================================================================== */
+@font-face {
+    font-family: 'KG Midnight Memories';
+    src: url('/fonts/KG Midnight Memories.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Inkfree';
+    src: url('/fonts/Inkfree.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+:root {
+    --chalkboard-green: #1a4332;
+    --ink-black: #1a1a1a;
+    --line-blue: #a5b4fc;
+    --paper-shadow: 0 15px 35px rgba(0,0,0,0.4);
+}
+
+/* Tema oscuro */
+[data-theme="dark"] {
+    --chalkboard-green: #0f2920;
+    --ink-black: #ffffff;
+    --line-blue: #7c3aed;
+}
+
+/* ==========================================================================
+   2. ESTRUCTURA DE PANTALLA
+   ========================================================================== */
+html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.screen {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    justify-content: center; /* Centra el wrapper principal */
+    align-items: center;
+    background-color: var(--chalkboard-green);
+    background-image: url('/img/chalkboard.jpg');
+    background-size: cover;
+    position: relative;
+}
+
+/* NUEVO CONTENEDOR LATERAL (Logo a la izq, Hoja a la der) */
+.login-layout-wrapper {
+    display: flex;
+    width: 90%;
+    max-width: 1200px;
+    justify-content: space-between; 
+    align-items: center;
+    z-index: 10;
+}
+
+/* ==========================================================================
+   3. ELEMENTOS DEL PIZARRÓN (LADO IZQUIERDO)
+   ========================================================================== */
+.login-side-left {
+    flex: 1;
+    text-align: left;
+    padding-left: 50px;
+}
+
+.logo-chalk-header {
+    font-family: 'KG Midnight Memories', cursive;
+    color: white;
+    font-size: 10rem;
+    margin: 0;
+    text-shadow: 4px 4px 15px rgba(0,0,0,0.6);
+}
+
+.chalk-subtitle {
+    font-family: 'KG Midnight Memories', cursive;
+    color: rgba(255,255,255,0.8);
+    font-size: 2.2rem;
+    margin-top: -10px;
+}
+
+/* Clase para el mensaje de carga inicial */
+.chalk-font {
+    font-family: 'KG Midnight Memories', cursive !important;
+    color: white;
+    font-size: clamp(4rem, 15vw, 8rem);
+    text-shadow: 3px 3px 10px rgba(0,0,0,0.5);
+    letter-spacing: 5px;
+    margin: 0;
+}
+
+.chalk-dust {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background-image: url('https://www.transparenttextures.com/patterns/chalkboard.png');
+    opacity: 0.15;
+    pointer-events: none;
+}
+
+/* ==========================================================================
+   4. LA HOJA DE CUADERNO (LADO DERECHO)
+   ========================================================================== */
+.login-side-right {
+    flex: 1;
+    display: flex;
+    justify-content: flex-end; 
+}
+
+.notebook-paper {
+    width: 400px;  
+    height: 560px; 
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    /* Bajamos los inputs con este padding superior alto */
+    padding: 220px 45px 40px 45px; 
+    box-shadow: var(--paper-shadow);
+    display: flex;
+    flex-direction: column;
+    transform: rotate(2deg); 
+}
+
+.login-form-notebook {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.notebook-field {
+    display: flex;
+    align-items: baseline;
+    margin-bottom: 1rem;
+    gap: 10px;
+}
+
+.notebook-field label {
+    font-family: 'Inkfree', cursive;
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: var(--ink-black);
+}
+
+.input-handwritten {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 1.5px dashed #888;
+    font-family: 'Inkfree', cursive;
+    font-size: 1.6rem;
+    color: #2d3748;
+    outline: none;
+    padding: 0 5px;
+    max-width: 180px;
+}
+
+/* ==========================================================================
+   5. BOTONES ESTILO STICKER
+   ========================================================================== */
+.notebook-actions {
+    margin-top: 50px; /* <--- Agregá o aumentá este valor para bajarlos */
+    display: flex;
+    flex-direction: column;
+    gap: 15px; 
+    padding-bottom: 10px;
+}
+
+.sticker-btn {
+    font-family: 'Inkfree', cursive;
+    font-size: 1.7rem;
+    font-weight: bold;
+    padding: 10px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 2px 4px 8px rgba(0,0,0,0.2);
+    transition: transform 0.2s;
+    position: relative;
+}
+
+.sticker-btn:hover { transform: scale(1.05) rotate(-1deg); }
+
+.sticker-pink {
+    background-color: #f3dcd4;
+    color: #444;
+    clip-path: polygon(2% 5%, 98% 2%, 99% 95%, 1% 98%);
+}
+
+.sticker-green {
+    background-color: #8da081;
+    color: #1a1a1a;
+    clip-path: polygon(1% 2%, 97% 5%, 95% 98%, 3% 95%);
+}
+
+.sticker-green::before {
+    content: "";
+    position: absolute;
+    top: -10px; left: 15px; width: 45px; height: 18px;
+    background: rgba(255, 255, 255, 0.4);
+    transform: rotate(-15deg);
+    box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+}
+
+/* ==========================================================================
+   6. ANIMACIONES Y RESPONSIVE
+   ========================================================================== */
+.hand-signature-animation {
+    width: 350px;
+    position: absolute;
+    bottom: 5%;
+    right: 5%;
+    z-index: 100;
+    animation: signatureMove 2.2s ease-in-out forwards;
+}
+
+@keyframes signatureMove {
+    0% { transform: translate(150px, 150px); opacity: 0; }
+    20% { transform: translate(0, 0); opacity: 1; }
+    100% { transform: translate(-300px, -300px); opacity: 0; }
+}
+
+@media (max-width: 900px) {
+    .login-layout-wrapper {
+        flex-direction: column;
+        justify-content: center;
+    }
+    .login-side-left { padding-left: 0; text-align: center; margin-bottom: 20px; }
+    .logo-chalk-header { font-size: 5rem; }
+    .notebook-paper { width: 340px; height: 500px; padding-top: 180px; }
+}
+/* --- ESTILOS ESPECÍFICOS PARA EL REGISTRO --- */
+
+/* Bajamos menos la hoja en el registro para que entre todo */
+.register-paper {
+    padding: 110px 35px 30px 35px !important; 
+    height: 600px !important;
+    width: 450px !important; /* Un poquito más ancha para el grid */
+}
+
+/* Grid de dos columnas para los inputs del cuaderno */
+.notebook-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+/* Inputs de registro (más compactos) */
+.input-handwritten-full {
+    background: transparent;
+    border: none;
+    border-bottom: 1.5px dashed #888;
+    font-family: 'Inkfree', cursive;
+    font-size: 1.1rem;
+    padding: 5px;
+    outline: none;
+    width: 100%;
+}
+
+.col-span-full {
+    grid-column: span 2;
+}
+
+.label-date {
+    font-family: 'Inkfree', cursive;
+    font-size: 0.8rem;
+    color: #666;
+    margin-bottom: -5px;
+}
+
+.notebook-actions-register {
+    display: flex;
+    justify-content: space-around;
+    gap: 10px;
+    margin-top: 10px;
+}

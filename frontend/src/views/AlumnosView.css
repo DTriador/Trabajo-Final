@@ -1,0 +1,171 @@
+.alumnos-container {
+  width: 100%;
+  max-width: 1100px;
+  max-height: 82vh;
+  margin: 40px auto;
+  padding: 30px 35px;
+  overflow-y: auto;
+  background: #fff9c4;
+  box-shadow: 10px 10px 30px rgba(0, 0, 0, 0.35);
+  border-bottom-right-radius: 40px 200px;
+  transform: rotate(-0.5deg);
+  font-family: 'Inkfree', cursive;
+  color: #1f2937;
+  position: relative;
+  z-index: 10;
+}
+
+.alumnos-container::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 20px;
+  background: #dc2626;
+  border-radius: 50%;
+  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.4);
+}
+
+.alumnos-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  border-bottom: 2px dashed #ccc;
+  padding-bottom: 16px;
+}
+
+.alumnos-title {
+  font-family: 'KG Midnight Memories', cursive;
+  font-size: 2.8rem;
+  color: #1f2937;
+  margin: 0;
+}
+
+.alumnos-btn-volver {
+  background: #e0f2fe;
+  border: 2px solid #38bdf8;
+  border-radius: 50px;
+  padding: 8px 20px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.alumnos-toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.alumnos-busqueda {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 16px;
+  border: 2px solid #cbd5e1;
+  border-radius: 50px;
+  font-size: 1rem;
+  outline: none;
+}
+
+.alumnos-busqueda:focus {
+  border-color: #38bdf8;
+}
+
+.alumnos-btn-add,
+.alumnos-btn-csv {
+  background: #f472b6;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 50px;
+  cursor: pointer;
+  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alumnos-btn-csv {
+  background: #34d399;
+}
+
+.alumnos-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #fef3c7;
+  border-radius: 12px;
+  flex-wrap: wrap;
+}
+
+.alumnos-form input {
+  flex: 1;
+  min-width: 150px;
+  padding: 8px 12px;
+  border: 2px solid #cbd5e1;
+  border-radius: 8px;
+}
+
+.alumnos-btn-guardar {
+  background: #22c55e;
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.alumnos-info {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+}
+
+.alumnos-vacio {
+  padding: 40px;
+  text-align: center;
+  color: #94a3b8;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 2px dashed #cbd5e1;
+}
+
+.alumnos-tabla {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.alumnos-tabla th,
+.alumnos-tabla td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.alumnos-tabla th {
+  background: #f1f5f9;
+  font-weight: bold;
+}
+
+.alumnos-tabla tr:hover {
+  background: #fef3c7;
+}
+
+.alumnos-btn-del {
+  background: #fee2e2;
+  color: #dc2626;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.alumnos-btn-del:hover {
+  background: #fecaca;
+}
