@@ -11,3 +11,5 @@ passlib[bcrypt]
 apscheduler
 requests
 jinja2
+email-validator
+cryptography
