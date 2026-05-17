@@ -16,3 +16,4 @@ cryptography
 PyMuPDF
 pandas
 python-pptx
+python-docx
