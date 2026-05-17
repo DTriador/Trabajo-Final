@@ -14,3 +14,4 @@ jinja2
 email-validator
 cryptography
 PyMuPDF
+pandas
