@@ -3,7 +3,7 @@ uvicorn[standard]
 pydantic
 supabase
 openai
-google-genai
+google-generativeai
 groq
 python-multipart
 python-jose[cryptography]
