@@ -17,3 +17,5 @@ PyMuPDF
 pandas
 python-pptx
 python-docx
+reportlab
+
