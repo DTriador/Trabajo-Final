@@ -613,7 +613,7 @@ Distribuí los temas de todas las unidades entre estas {payload.total_clases} cl
 async def exportar_planificacion_word(id_plan: str):
     try:
         # Obtener datos de la planificación
-        plan_res = supabase.table("planificaciones") \
+        plan_res = supabase.table("planificacion") \
             .select("*") \
             .eq("id", id_plan) \
             .single() \
@@ -683,7 +683,7 @@ async def exportar_planificacion_word(id_plan: str):
 @router.get("/planificacion/lista/{id_docente}")
 async def listar_planificaciones(id_docente: str):
     try:
-        res = supabase.table("planificaciones") \
+        res = supabase.table("planificacion") \
             .select("id, nombre_clase, duracion, contenido_minimo, created_at") \
             .eq("id_docente", id_docente) \
             .order("created_at", desc=True) \
@@ -707,7 +707,7 @@ async def listar_planificaciones(id_docente: str):
 @router.get("/planificacion/{id_plan}/exportar-word")
 async def exportar_planificacion_word(id_plan: str):
     try:
-        plan_res = supabase.table("planificaciones").select("*").eq("id", id_plan).single().execute()
+        plan_res = supabase.table("planificacion").select("*").eq("id", id_plan).single().execute()
         plan = plan_res.data
         if not plan:
             raise HTTPException(status_code=404, detail="Planificación no encontrada")
@@ -765,7 +765,7 @@ async def exportar_planificacion_word(id_plan: str):
 @router.get("/planificacion/{id_plan}/exportar-pdf")
 async def exportar_planificacion_pdf(id_plan: str):
     try:
-        plan_res = supabase.table("planificaciones").select("*").eq("id", id_plan).single().execute()
+        plan_res = supabase.table("planificacion").select("*").eq("id", id_plan).single().execute()
         plan = plan_res.data
         if not plan:
             raise HTTPException(status_code=404, detail="Planificación no encontrada")
