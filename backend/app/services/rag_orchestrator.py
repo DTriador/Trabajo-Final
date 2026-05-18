@@ -4,7 +4,7 @@ import re
 import fitz
 import os
 from openai import OpenAI
-from google import genai as google_genai   # ← NUEVO
+from google import genai as google_genai
 
 from app.core.database import supabase
 from dotenv import load_dotenv
@@ -38,9 +38,9 @@ class RAGOrchestrator:
             return ""
 
     # =========================
-    # EMBEDDINGS (USANDO CLIENTE OPENAI)
+    # EMBEDDINGS (GEMINI)
     # =========================
-    @staticmethod 
+    @staticmethod
     def _get_embedding(texto: str):
         try:
             r = _gemini_client.models.embed_content(
@@ -51,8 +51,9 @@ class RAGOrchestrator:
         except Exception as e:
             print(f"⚠️ Embedding Gemini falló. Bypass activado. Error: {e}")
             return None
+
     # =========================
-    # GENERATION (USANDO CLIENTE GROQ)
+    # GENERATION (GROQ)
     # =========================
     @staticmethod
     def _generate(prompt: str, max_chars: int = 28000):
@@ -63,13 +64,12 @@ class RAGOrchestrator:
 
         modelos_a_probar = [
             ("llama-3.3-70b-versatile", 3000),
-            ("llama-3.1-8b-instant",     1500),
+            ("llama-3.1-8b-instant",    1500),
         ]
 
         errores = []
 
         for modelo, max_tokens_modelo in modelos_a_probar:
-            # Truncar aún más si el modelo tiene límite menor
             prompt_modelo = prompt[:max_tokens_modelo * 3]  # ~3 chars por token
             try:
                 print(f"⏳ Intentando generar con el modelo: {modelo}...")
@@ -91,13 +91,13 @@ class RAGOrchestrator:
             print(f"- {err}")
 
         raise Exception("Groq rechazó la conexión. Revisá la consola para leer el error exacto.")
+
     # =========================
-    # UTILIDAD: PARSER JSON (Faltaba en tu código)
+    # UTILIDAD: PARSER JSON
     # =========================
     @staticmethod
     def _parse_json(text: str):
         try:
-            # Busca bloques de JSON si el modelo incluyó texto extra
             match = re.search(r'\{.*\}', text, re.DOTALL)
             if match:
                 return json.loads(match.group())
@@ -115,19 +115,23 @@ class RAGOrchestrator:
         file_content: bytes,
         user_prompt: str,
         system_instruction: str,
-        id_docente: str  # <-- Agregado para el filtro de Supabase
+        id_docente: str,
     ):
         texto_archivo = cls._extraer_texto_pdf(file_content)
         query_vector = cls._get_embedding(user_prompt)
 
         context_db = ""
-        if query_vector: 
-            result = supabase.table('chunks_rag').select('contenido_chunk').filter(
-                'id_docente', 'eq', id_docente
-            ).order(
-                'embedding <-> \'{}\''.format(','.join(map(str, query_vector)))
-            ).limit(4).execute()
-            context_db = "\n".join([row['contenido_chunk'] for row in result.data]) if result.data else ""
+        if query_vector:
+            try:
+                result = supabase.table('chunks_rag').select('contenido_chunk').filter(
+                    'id_docente', 'eq', id_docente
+                ).order(
+                    'embedding <-> \'{}\''.format(','.join(map(str, query_vector)))
+                ).limit(4).execute()
+                context_db = "\n".join([row['contenido_chunk'] for row in result.data]) if result.data else ""
+            except Exception as rag_err:
+                print(f"⚠️ RAG no disponible, generando sin contexto: {rag_err}")
+                context_db = ""
 
         full_prompt = f"""
 {system_instruction}
@@ -152,21 +156,23 @@ PEDIDO:
         cls,
         user_prompt: str,
         system_instruction: str,
-        id_docente: str = None # <-- Agregado para consistencia
+        id_docente: str = None,
     ):
         query_vector = cls._get_embedding(user_prompt)
 
         context_text = ""
         if query_vector:
-            # Si tienes id_docente, filtramos para que el RAG sea más preciso
-            query = supabase.table('chunks_rag').select('contenido_chunk')
-            if id_docente:
-                query = query.filter('id_docente', 'eq', id_docente)
-            
-            result = query.order(
-                'embedding <-> \'{}\''.format(','.join(map(str, query_vector)))
-            ).limit(6).execute()
-            context_text = "\n".join([row['contenido_chunk'] for row in result.data]) if result.data else ""
+            try:
+                query = supabase.table('chunks_rag').select('contenido_chunk')
+                if id_docente:
+                    query = query.filter('id_docente', 'eq', id_docente)
+                result = query.order(
+                    'embedding <-> \'{}\''.format(','.join(map(str, query_vector)))
+                ).limit(6).execute()
+                context_text = "\n".join([row['contenido_chunk'] for row in result.data]) if result.data else ""
+            except Exception as rag_err:
+                print(f"⚠️ RAG no disponible, generando sin contexto: {rag_err}")
+                context_text = ""
 
         full_prompt = f"""
 {system_instruction}
@@ -187,18 +193,22 @@ PEDIDO:
     async def generar_respuesta_pedagogica(
         cls,
         user_prompt: str,
-        id_docente: str
+        id_docente: str,
     ):
         query_vector = cls._get_embedding(user_prompt)
 
         context_text = ""
         if query_vector:
-            result = supabase.table('chunks_rag').select('contenido_chunk').filter(
-                'id_docente', 'eq', id_docente
-            ).order(
-                'embedding <-> \'{}\''.format(','.join(map(str, query_vector)))
-            ).limit(6).execute()
-            context_text = "\n".join([row['contenido_chunk'] for row in result.data]) if result.data else ""
+            try:
+                result = supabase.table('chunks_rag').select('contenido_chunk').filter(
+                    'id_docente', 'eq', id_docente
+                ).order(
+                    'embedding <-> \'{}\''.format(','.join(map(str, query_vector)))
+                ).limit(6).execute()
+                context_text = "\n".join([row['contenido_chunk'] for row in result.data]) if result.data else ""
+            except Exception as rag_err:
+                print(f"⚠️ RAG no disponible: {rag_err}")
+                context_text = ""
 
         system_instruction = """
         Sos un asistente pedagógico experto llamado Kōkua. Respondé de manera amigable, clara y útil.
