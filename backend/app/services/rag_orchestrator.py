@@ -1,19 +1,20 @@
 # backend/app/services/rag_orchestrator.py
 import json
 import re
-import fitz  # PyMuPDF
+import fitz
 import os
 from openai import OpenAI
+from google import genai as google_genai   # ← NUEVO
 
 from app.core.database import supabase
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# 🔐 CLIENTE 1: OpenAI (SOLO para Embeddings - requiere tu clave de OpenAI)
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# 🔐 Gemini para embeddings (gratis)
+_gemini_client = google_genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-# 🔐 CLIENTE 2: Groq (SOLO para Generación - requiere tu clave de Groq)
+# 🔐 Groq para generación
 groq_client = OpenAI(
     api_key=os.getenv("GROQ_API_KEY"),
     base_url="https://api.groq.com/openai/v1"
@@ -39,54 +40,57 @@ class RAGOrchestrator:
     # =========================
     # EMBEDDINGS (USANDO CLIENTE OPENAI)
     # =========================
-    @staticmethod
+    @staticmethod 
     def _get_embedding(texto: str):
         try:
-            # Importante: Usamos el cliente nativo de OpenAI para evitar el 404 en Groq
-            response = openai_client.embeddings.create(
-                input=texto,
-                model="text-embedding-3-small"
+            r = _gemini_client.models.embed_content(
+                model="models/gemini-embedding-001",
+                contents=texto,
             )
-            return response.data[0].embedding
+            return r.embeddings[0].values
         except Exception as e:
-            print(f"⚠️ API de Embeddings falló. Activando Bypass seguro. Error ignorado: {e}")
-            return None 
-
+            print(f"⚠️ Embedding Gemini falló. Bypass activado. Error: {e}")
+            return None
     # =========================
     # GENERATION (USANDO CLIENTE GROQ)
     # =========================
     @staticmethod
-    def _generate(prompt: str):
+    def _generate(prompt: str, max_chars: int = 28000):
+        # Truncar prompt si es demasiado largo para el límite de tokens de Groq
+        if len(prompt) > max_chars:
+            print(f"⚠️ Prompt truncado de {len(prompt)} a {max_chars} chars")
+            prompt = prompt[:max_chars]
+
         modelos_a_probar = [
-                "llama-3.3-70b-versatile", 
-                "llama-3.1-8b-instant"
+            ("llama-3.3-70b-versatile", 10000),
+            ("llama-3.1-8b-instant",     5000),
         ]
-        
-        errores = [] 
-        
-        for modelo in modelos_a_probar:
+
+        errores = []
+
+        for modelo, max_tokens_modelo in modelos_a_probar:
+            # Truncar aún más si el modelo tiene límite menor
+            prompt_modelo = prompt[:max_tokens_modelo * 3]  # ~3 chars por token
             try:
-                print(f"⏳ Intentando generar la clase con el modelo: {modelo}...")
+                print(f"⏳ Intentando generar con el modelo: {modelo}...")
                 response = groq_client.chat.completions.create(
                     model=modelo,
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ]
+                    messages=[{"role": "user", "content": prompt_modelo}],
+                    max_tokens=2048,
                 )
                 print(f"✅ ¡Éxito con el modelo {modelo}!")
                 return response.choices[0].message.content
             except Exception as e:
                 error_real = str(e)
-                print(f"⚠️ El modelo {modelo} falló. ERROR EXACTO: {error_real}")
+                print(f"⚠️ El modelo {modelo} falló. ERROR: {error_real}")
                 errores.append(error_real)
                 continue
-        
+
         print("\n❌ RESUMEN DE ERRORES DE GROQ:")
         for err in errores:
             print(f"- {err}")
-            
-        raise Exception("Groq rechazó la conexión. Revisá la consola para leer el error exacto.")
 
+        raise Exception("Groq rechazó la conexión. Revisá la consola para leer el error exacto.")
     # =========================
     # UTILIDAD: PARSER JSON (Faltaba en tu código)
     # =========================
