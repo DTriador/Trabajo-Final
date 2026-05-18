@@ -1,17 +1,21 @@
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import os
 import json
 
-# Configuración del modelo Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-1.5-flash')
+# Configuración del cliente Gemini (nueva API)
+_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+_MODEL = "gemini-2.0-flash"
 
 async def get_structured_pedagogical_data(prompt: str, system_instruction: str):
     """
     Función core para obtener respuestas estructuradas (JSON) de la IA.
     Acepta instrucciones de sistema dinámicas según el tipo de archivo a generar.
     """
-    response = model.generate_content(f"{system_instruction} {prompt}")
+    response = _client.models.generate_content(
+        model=_MODEL,
+        contents=f"{system_instruction}\n\n{prompt}",
+    )
     # Limpieza de la respuesta para asegurar un JSON válido
     clean_json = response.text.replace("```json", "").replace("```", "").strip()
     return json.loads(clean_json)
