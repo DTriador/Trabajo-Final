@@ -48,7 +48,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+@app.get("/")
+@app.head("/")
+async def health_check():
+    return {"status": "ok", "service": "Kōkua Backend"}
 
 # ── Rutas ─────────────────────────────────────────────────────────────────────
 
