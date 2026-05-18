@@ -62,8 +62,8 @@ class RAGOrchestrator:
             prompt = prompt[:max_chars]
 
         modelos_a_probar = [
-            ("llama-3.3-70b-versatile", 10000),
-            ("llama-3.1-8b-instant",     5000),
+            ("llama-3.3-70b-versatile", 3000),
+            ("llama-3.1-8b-instant",     1500),
         ]
 
         errores = []
