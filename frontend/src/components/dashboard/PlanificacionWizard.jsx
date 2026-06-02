@@ -138,24 +138,34 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
     const maxPosicion = Math.max(...posicionesOcupadas, total);
     const fechasClases = fechasCalculadas.slice(0, maxPosicion + 5);
 
-    // ── Marcar fechas de recuperatorios ───────────────────────────────────────
-    const fechasRecup = new Map(); // fecha → numExamen
-    recupPorExamen.forEach((rango, numEx) => {
-      for (let pos = rango.desde; pos <= rango.hasta; pos++) {
-        const fecha = fechasClases[pos - 1];
-        if (fecha) fechasRecup.set(fecha, numEx);
+    // ── Marcar recuperatorios por POSICIÓN (más robusto que por fecha) ─────
+    // recupPorExamen: Map<numeroExamen, {desde, hasta}>
+    const getRecupForPos = (pos) => {
+      for (const [numEx, rango] of recupPorExamen.entries()) {
+        const desde = Number(rango.desde);
+        const hasta = Number(rango.hasta);
+        if (!isNaN(desde) && !isNaN(hasta) && pos >= desde && pos <= hasta) {
+          return Number(numEx);
+        }
       }
-    });
+      return null;
+    };
+
+    // total de posiciones marcadas como recuperatorio (suma de longitudes de rangos)
+    const totalRecupPositions = Array.from(recupPorExamen.values()).reduce((s, r) => {
+      const d = Number(r.desde); const h = Number(r.hasta);
+      return s + (isNaN(d) || isNaN(h) ? 0 : Math.max(0, h - d + 1));
+    }, 0);
 
     // ── Fechas solo para clases normales (IA) ─────────────────────────────────
     const fechasSoloClases = [];
     for (let pos = 1; pos <= maxPosicion; pos++) {
       const fecha = fechasClases[pos - 1];
       if (!fecha) continue;
-      if (!examenPorClase.has(pos) && !fechasRecup.has(fecha)) {
+      if (!examenPorClase.has(pos) && getRecupForPos(pos) === null) {
         fechasSoloClases.push(fecha);
       }
-      if (fechasSoloClases.length >= total - examenPorClase.size - fechasRecup.size) break;
+      if (fechasSoloClases.length >= total - examenPorClase.size - totalRecupPositions) break;
     }
 
     try {
@@ -187,8 +197,8 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
 
         const esExamen = examenPorClase.has(pos);
         const numEx    = esExamen ? examenPorClase.get(pos) : null;
-        const esRecup  = fechasRecup.has(fecha) && !esExamen;
-        const numExRecup = esRecup ? fechasRecup.get(fecha) : null;
+         const numExRecup = !esExamen ? getRecupForPos(pos) : null;
+         const esRecup = numExRecup !== null;
 
         if (esExamen) {
           const ex = examenes[numEx - 1];
@@ -229,8 +239,8 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
 
         const esExamen = examenPorClase.has(pos);
         const numEx    = esExamen ? examenPorClase.get(pos) : null;
-        const esRecup  = fechasRecup.has(fecha) && !esExamen;
-        const numExRecup = esRecup ? fechasRecup.get(fecha) : null;
+        const numExRecup = !esExamen ? getRecupForPos(pos) : null;
+        const esRecup  = numExRecup !== null;
 
         if (esExamen) {
           resultado.push({ numero: pos, fecha, tipo: 'examen', numExamen: numEx, unidad: null,
@@ -297,10 +307,10 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
         if (datosMateria.archivos?.length > 0) {
           try {
             const fd = new FormData();
-            datosMateria.archivos.forEach(f => fd.append('files', f));
+            datosMateria.archivos.forEach(f => fd.append('file', f));
+            fd.append('id_docente', userId);
             await api.post(`/documentos/subir`, fd, {
               headers: { 'Content-Type': undefined },
-              params: { id_docente: userId },
             });
           } catch (uploadErr) {
             console.warn('Archivos no subidos:', uploadErr);

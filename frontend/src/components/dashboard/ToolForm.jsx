@@ -72,6 +72,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
         payload.append('id_docente', userId);
         payload.append('id_escuela', formData.id_escuela || '');
         payload.append('id_curso', formData.id_curso || '');
+        payload.append('fecha', formData.fecha || '');
         if (formData.fuente_contenido === 'pdf' && formData.pdf) payload.append('file', formData.pdf);
         res = await api.post(`/generar/apunte`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
@@ -88,6 +89,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
         payload.append('numero_preguntas', formData.numero_preguntas);
         payload.append('id_escuela', formData.id_escuela || '');
         payload.append('id_curso', formData.id_curso || '');
+        payload.append('fecha', formData.fecha || '');
         if (formData.fuente_contenido === 'pdf' && formData.pdf) payload.append('file', formData.pdf);
         res = await api.post(`/generar/preguntas`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
@@ -118,6 +120,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
         payload.append('id_docente', userId);
         payload.append('id_escuela', formData.id_escuela || '');
         payload.append('id_curso',   formData.id_curso   || '');
+        payload.append('fecha', '');
         if (formData.fuente_contenido === 'pdf' && formData.pdf) payload.append('file', formData.pdf);
         res = await api.post(`/generar/podcast`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
@@ -134,6 +137,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
         payload.append('mostrar_lista', formData.mostrar_lista_palabras ? 'true' : 'false');
         payload.append('id_escuela', formData.id_escuela || '');
         payload.append('id_curso', formData.id_curso || '');
+        payload.append('fecha', '');
         if (formData.fuente_contenido === 'pdf' && formData.pdf) payload.append('file', formData.pdf);
         res = await api.post(`/generar/sopa_letras`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
@@ -151,6 +155,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
         payload.append('palabras_verticales', formData.palabras_verticales || 5);
         payload.append('id_escuela', formData.id_escuela || '');
         payload.append('id_curso', formData.id_curso || '');
+        payload.append('fecha', '');
         if (formData.fuente_contenido === 'pdf' && formData.pdf) payload.append('file', formData.pdf);
         res = await api.post(`/generar/crucigrama`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
@@ -167,6 +172,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
         payload.append('numero_pares', formData.numero_pares || 8);
         payload.append('id_escuela', formData.id_escuela || '');
         payload.append('id_curso', formData.id_curso || '');
+        payload.append('fecha', '');
         if (formData.fuente_contenido === 'pdf' && formData.pdf) payload.append('file', formData.pdf);
         res = await api.post(`/generar/unir_flechas`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
@@ -519,7 +525,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
 
       {/* ── Solo fecha (apunte, preguntas, sopa, crucigrama, flechas, podcast) */}
       {/* El nombre del alumno queda en blanco en el doc para que lo complete el alumno */}
-      {TOOLS_CON_ESCUELA.includes(tool.id) && tool.id !== 'examen' && (
+      {['apunte', 'preguntas'].includes(tool.id) && (
         <SoloFecha />
       )}
 

@@ -85,9 +85,9 @@ def _dibujar_encabezado_pdf(c, width, height, nombre_escuela, nombre_materia, di
     c.setFont("Helvetica", 11)
     c.drawString(1.5*cm, y, f"Materia: {nombre_materia}  |  División: {division}")
     y -= 0.5*cm
-    if fecha:
-        c.drawString(1.5*cm, y, f"Fecha: {fecha}")
-        y -= 0.5*cm
+    fecha_val = fecha if fecha else "_______________________________"
+    c.drawString(1.5*cm, y, f"Fecha: {fecha_val}")
+    y -= 0.5*cm
     # Campo Nombre del Alumno siempre en blanco — lo completa el alumno
     c.setFont("Helvetica-Bold", 11)
     c.drawString(1.5*cm, y, "Nombre del Alumno/a: ")

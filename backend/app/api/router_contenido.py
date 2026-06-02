@@ -87,7 +87,11 @@ def _encabezado_documento(doc, tipo_doc: str, nombre_materia: str, tema: str,
     from docx.shared import Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-    fecha = fecha_str or datetime.now().strftime("%d/%m/%Y")
+    # If fecha_str is None -> use current date; if it's an empty string -> keep it empty
+    if fecha_str is None:
+        fecha = datetime.now().strftime("%d/%m/%Y")
+    else:
+        fecha = fecha_str
 
     # Título principal centrado
     titulo_p = doc.add_paragraph()
@@ -145,6 +149,7 @@ async def generar_apunte(
     file: Optional[UploadFile] = File(None),
     id_escuela: Optional[str] = Form(None),
     id_curso: Optional[str] = Form(None),
+    fecha: Optional[str] = Form(None),
 ):
     try:
         nombre_escuela, nombre_materia, division, contenido_minimo, bibliografia = \
@@ -193,7 +198,7 @@ async def generar_apunte(
         from docx import Document
 
         doc = Document()
-        _encabezado_documento(doc, "Apunte", nombre_materia, tema, nombre_escuela)
+        _encabezado_documento(doc, "Apunte", nombre_materia, tema, nombre_escuela, fecha_str=fecha)
 
         if datos_json.get("introduccion"):
             doc.add_heading("Introducción", level=1)
@@ -242,6 +247,7 @@ async def generar_preguntas(
     file: Optional[UploadFile] = File(None),
     id_escuela: Optional[str] = Form(None),
     id_curso: Optional[str] = Form(None),
+    fecha: Optional[str] = Form(None),
 ):
     from docx import Document
 
@@ -312,7 +318,7 @@ async def generar_preguntas(
             )
 
         doc = Document()
-        _encabezado_documento(doc, "Guía de Preguntas", nombre_materia, tema, nombre_escuela)
+        _encabezado_documento(doc, "Guía de Preguntas", nombre_materia, tema, nombre_escuela, fecha_str=fecha)
 
         if introduccion:
             doc.add_heading("Indicaciones", level=1)
@@ -487,6 +493,7 @@ async def generar_podcast(
     file: Optional[UploadFile] = File(None),
     id_escuela: Optional[str] = Form(None),
     id_curso: Optional[str] = Form(None),
+    fecha: Optional[str] = Form(None),
 ):
     from docx import Document
 
@@ -554,7 +561,7 @@ async def generar_podcast(
             )
 
         doc = Document()
-        _encabezado_documento(doc, "Podcast", nombre_materia, tema, nombre_escuela)
+        _encabezado_documento(doc, "Podcast", nombre_materia, tema, nombre_escuela, fecha_str=fecha)
 
         doc.add_heading(titulo_ep, level=1)
         if duracion:
