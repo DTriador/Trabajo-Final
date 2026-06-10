@@ -6,7 +6,7 @@ import './ProximasClases.css';
 
 const calcularRestante = (fecha) => {
   const ahora = new Date();
-  const clase = new Date(fecha);
+  const clase = parseFechaFlexible(fecha) || new Date(fecha);
   const diff = clase - ahora;
 
   if (diff < 0) return { texto: 'Ya pasó', urgente: false, vencido: true };
@@ -23,9 +23,103 @@ const calcularRestante = (fecha) => {
   return { texto, urgente: dias === 0 && horas < 3, vencido: false };
 };
 
+const esFutura = (fecha) => {
+  if (!fecha) return false;
+  const tieneHora = /[T\s]/.test(fecha);
+  if (tieneHora) {
+    const clase = new Date(fecha);
+    return !Number.isNaN(clase.getTime()) && clase.getTime() > Date.now();
+  }
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  if (!anio || !mes || !dia) return false;
+  const finDelDia = new Date(anio, mes - 1, dia, 23, 59, 59, 999);
+  return finDelDia.getTime() > Date.now();
+};
+
 const etiquetaCronograma = (tipo, numero) => {
   const base = tipo === 'examen' ? 'Examen' : tipo === 'recuperatorio' ? 'Recup.' : 'Clase';
   return `${base} ${numero}`.trim();
+};
+
+const sumarMes = (fecha) => new Date(fecha.getFullYear(), fecha.getMonth() + 1, 1);
+
+const parseFechaFlexible = (fecha) => {
+  if (!fecha) return null;
+  if (/[T\s]/.test(fecha)) {
+    const parsed = new Date(fecha);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  if (!anio || !mes || !dia) return null;
+  return new Date(anio, mes - 1, dia, 12, 0, 0, 0);
+};
+
+const minutosDesdeMedianoche = (hora) => {
+  if (!hora) return null;
+  const [hh, mm] = hora.split(':').map(Number);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  return hh * 60 + mm;
+};
+
+const duracionEnMinutos = (valor) => {
+  if (!valor) return 60;
+  const match = String(valor).match(/\d+/);
+  return match ? Math.max(15, parseInt(match[0], 10)) : 60;
+};
+
+const rangoDeItem = (item) => {
+  const fechaBase = item.fecha_programada || item.fecha;
+  if (!fechaBase) return null;
+
+  if (/[T\s]/.test(fechaBase)) {
+    const inicio = new Date(fechaBase);
+    if (Number.isNaN(inicio.getTime())) return null;
+    const duracion = duracionEnMinutos(item.duracion || item.planificacion?.duracion);
+    return { inicio, fin: new Date(inicio.getTime() + duracion * 60000) };
+  }
+
+  const inicioMin = minutosDesdeMedianoche(item.hora_inicio);
+  const finMin = minutosDesdeMedianoche(item.hora_fin);
+  if (inicioMin !== null && finMin !== null) {
+    const [anio, mes, dia] = fechaBase.split('-').map(Number);
+    const inicio = new Date(anio, mes - 1, dia, Math.floor(inicioMin / 60), inicioMin % 60, 0, 0);
+    const fin = new Date(anio, mes - 1, dia, Math.floor(finMin / 60), finMin % 60, 0, 0);
+    return { inicio, fin };
+  }
+
+  const inicio = parseFechaFlexible(fechaBase);
+  if (!inicio) return null;
+  const fin = new Date(inicio.getTime() + 60 * 60000);
+  return { inicio, fin };
+};
+
+const solapan = (a, b) => a && b && a.inicio < b.fin && b.inicio < a.fin;
+
+const normalizarItemCalendario = (item) => {
+  const fechaBase = item.fecha_programada || item.fecha;
+  const rango = rangoDeItem(item);
+  return { ...item, fechaBase, rango };
+};
+
+const parseFechaSalida = (fecha) => parseFechaFlexible(fecha) || new Date(fecha);
+
+const detectarConflicto = (clase, itemsCalendario) => {
+  const rangoClase = rangoDeItem(clase);
+  if (!rangoClase) return null;
+
+  for (const item of itemsCalendario) {
+    if (item.id === clase.id || item.id_evento === clase.id_evento) continue;
+    const rangoItem = item.rango || rangoDeItem(item);
+    if (!rangoItem) continue;
+
+    const mismaFecha = (item.fechaBase || '').slice(0, 10) === (clase.fecha_programada || clase.fecha || '').slice(0, 10);
+    if (mismaFecha && solapan(rangoClase, rangoItem)) {
+      const etiqueta = item.tipo === 'evento' ? 'otro evento' : item.tipo === 'recuperatorio' ? 'otro recuperatorio' : item.tipo === 'examen' ? 'otro examen' : 'otra clase';
+      return `Se cruza con ${etiqueta}`;
+    }
+  }
+
+  return null;
 };
 
 const ProximasClases = () => {
@@ -34,6 +128,7 @@ const ProximasClases = () => {
   const [cargando, setCargando] = useState(true);
   const [, setTick]             = useState(0);
   const [seleccionada, setSeleccionada] = useState(null);
+  const [, setItemsCalendario] = useState([]);
 
   const userId = user?.id || user?.id_docente || user?.user?.id;
 
@@ -44,8 +139,45 @@ const ProximasClases = () => {
         return;
       }
       try {
-        const res = await api.get(`/generar/planificacion/proximas/${userId}?dias=30`);
-        setClases(res.data || []);
+        const hoy = new Date();
+        const mesActual = hoy.getMonth() + 1;
+        const anioActual = hoy.getFullYear();
+        const siguienteMes = sumarMes(hoy);
+
+        const [resProximas, resCalendarioActual, resCalendarioSiguiente] = await Promise.all([
+          api.get(`/generar/planificacion/proximas/${userId}?dias=30`),
+          api.get(`/calendario/mes/${userId}/${anioActual}/${mesActual}`),
+          api.get(`/calendario/mes/${userId}/${siguienteMes.getFullYear()}/${siguienteMes.getMonth() + 1}`),
+        ]);
+
+        const calendarioActual = resCalendarioActual.data || {};
+        const calendarioSiguiente = resCalendarioSiguiente.data || {};
+        const calendario = [
+          ...(calendarioActual.eventos || []).map(normalizarItemCalendario),
+          ...(calendarioActual.cronograma || []).map(normalizarItemCalendario),
+          ...(calendarioSiguiente.eventos || []).map(normalizarItemCalendario),
+          ...(calendarioSiguiente.cronograma || []).map(normalizarItemCalendario),
+        ];
+        setItemsCalendario(calendario);
+
+        const ahora = Date.now();
+        const proximas = (resProximas.data || [])
+          .filter(c => {
+            const fecha = c.fecha_programada || c.fecha;
+            if (!fecha) return false;
+            if (/[T\s]/.test(fecha)) {
+              const clase = new Date(fecha);
+              return !Number.isNaN(clase.getTime()) && clase.getTime() > ahora;
+            }
+            const clase = parseFechaSalida(fecha);
+            if (!clase || Number.isNaN(clase.getTime())) return false;
+            const finDelDia = new Date(clase.getFullYear(), clase.getMonth(), clase.getDate(), 23, 59, 59, 999);
+            return finDelDia.getTime() > ahora;
+          })
+          .sort((a, b) => parseFechaSalida(a.fecha_programada || a.fecha) - parseFechaSalida(b.fecha_programada || b.fecha));
+        setClases(proximas
+          .map(c => ({ ...c, conflicto: detectarConflicto(c, calendario) }))
+          .sort((a, b) => parseFechaSalida(a.fecha_programada || a.fecha) - parseFechaSalida(b.fecha_programada || b.fecha)));
       } catch (e) {
         console.error("Error cargando próximas clases:", e);
       } finally {
@@ -62,7 +194,7 @@ const ProximasClases = () => {
 
   if (cargando) return null;
 
-  const fechaCompleta = (f) => new Date(f).toLocaleString('es-AR', {
+  const fechaCompleta = (f) => (parseFechaFlexible(f) || new Date(f)).toLocaleString('es-AR', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
@@ -87,10 +219,15 @@ const ProximasClases = () => {
               >
                 <div className="proxima-nombre">{etiquetaCronograma(c.tipo, c.numero)}</div>
                 <div className="proxima-fecha">
-                  📅 {new Date(fecha).toLocaleString('es-AR', {
+                  📅 {(parseFechaFlexible(fecha) || new Date(fecha)).toLocaleString('es-AR', {
                     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                   })}
                 </div>
+                {c.conflicto && (
+                  <div className="proxima-fecha" style={{ color: '#b45309', fontWeight: 'bold' }}>
+                    ⚠️ {c.conflicto}
+                  </div>
+                )}
                 <div className="proxima-fecha" style={{ opacity: 0.85 }}>
                   {c.planificacion?.nombre_clase || c.tema_clase || 'Sin detalle de planificación'}
                 </div>

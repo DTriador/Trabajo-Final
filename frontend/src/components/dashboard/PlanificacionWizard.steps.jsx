@@ -249,7 +249,13 @@ export function PasoMateria({ data, onChange, escuelas, cursos, onEscuelaChange 
 // PASO 2 — Calendario: rango + chips días + calendario visual + feriados backend
 // Combina: auto-cálculo de fechas (nueva) + grilla visual + feriados del backend (vieja)
 // ─────────────────────────────────────────────────────────────────────────────
-export function PasoCalendario({ totalClases, fechasCalculadas, setFechasCalculadas }) {
+export function PasoCalendario({
+  totalClases,
+  fechasCalculadas,
+  setFechasCalculadas,
+  horariosClases,
+  setHorariosClases,
+}) {
   const { user } = useAuth();
 
   const [calYear,  setCalYear]  = useState(new Date().getFullYear());
@@ -298,6 +304,18 @@ export function PasoCalendario({ totalClases, fechasCalculadas, setFechasCalcula
     fetchFeriados();
   }, [calYear, user]); // eslint-disable-line
 
+  useEffect(() => {
+    setHorariosClases(prev => {
+      const prevByFecha = new Map((prev || []).map(item => [item.fecha, item]));
+      return fechasCalculadas.map((fecha, index) => ({
+        fecha,
+        hora_inicio: prevByFecha.get(fecha)?.hora_inicio || '08:00',
+        hora_fin: prevByFecha.get(fecha)?.hora_fin || '09:00',
+        numero: index + 1,
+      }));
+    });
+  }, [fechasCalculadas, setHorariosClases]);
+
   // Recalcular fechasCalculadas cada vez que cambia rango, días o feriados
   useEffect(() => {
     if (!rangoInicio || !rangoFin || diasSemana.size === 0) {
@@ -337,6 +355,10 @@ export function PasoCalendario({ totalClases, fechasCalculadas, setFechasCalcula
 
   const prevMes = () => { let m = calMonth - 1, y = calYear; if (m < 0) { m = 11; y--; } setCalMonth(m); setCalYear(y); };
   const nextMes = () => { let m = calMonth + 1, y = calYear; if (m > 11) { m = 0; y++; } setCalMonth(m); setCalYear(y); };
+
+  const updateHorario = (idx, field, value) => {
+    setHorariosClases(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
+  };
 
   const construirGrilla = () => {
     const first  = new Date(calYear, calMonth, 1);
@@ -473,6 +495,40 @@ export function PasoCalendario({ totalClases, fechasCalculadas, setFechasCalcula
           <span><span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background:'#f1f5f9', marginRight:4 }}/>Fin de semana</span>
           <span style={{ color:'#64748b' }}>Click en un día para incluirlo/excluirlo manualmente</span>
         </div>
+      </div>
+
+      <div style={S.card}>
+        <p style={S.sectionTitle}>🕒 Horarios por clase</p>
+        {horariosClases.length === 0 ? (
+          <p style={{ color: '#94a3b8', fontStyle: 'italic', textAlign: 'center', padding: 12 }}>
+            Elegí primero los días de clase para definir el horario de cada uno.
+          </p>
+        ) : (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {horariosClases.map((slot, idx) => (
+              <div key={`${slot.fecha}-${idx}`} style={{
+                display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 0.8fr', gap: 10,
+                alignItems: 'center', padding: '10px 12px', borderRadius: 12,
+                background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.08)',
+              }}>
+                <div>
+                  <div style={{ fontWeight: 'bold', color: '#1f2937' }}>Clase {idx + 1}</div>
+                  <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{slot.fecha}</div>
+                </div>
+                <div>
+                  <label style={S.label}>Inicio</label>
+                  <input type="time" style={{ ...S.input, marginBottom: 0 }} value={slot.hora_inicio}
+                    onChange={e => updateHorario(idx, 'hora_inicio', e.target.value)} />
+                </div>
+                <div>
+                  <label style={S.label}>Fin</label>
+                  <input type="time" style={{ ...S.input, marginBottom: 0 }} value={slot.hora_fin}
+                    onChange={e => updateHorario(idx, 'hora_fin', e.target.value)} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Feriados extra manuales */}
@@ -689,6 +745,12 @@ export function PasoPreview({ clases, setClases, onGuardar, guardando, generando
                       background: 'transparent', fontSize: '0.92rem',
                       color: '#1f2937', fontFamily: "'Inkfree', cursive", padding: '2px 0',
                     }} />
+
+                  {(c.hora_inicio || c.hora_fin) && (
+                    <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                      🕒 {c.hora_inicio || '--:--'} a {c.hora_fin || '--:--'}
+                    </p>
+                  )}
 
                   {/* Línea de referencia tipo "Clase N° 25 (16/06): Tema" */}
                   <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#94a3b8' }}>

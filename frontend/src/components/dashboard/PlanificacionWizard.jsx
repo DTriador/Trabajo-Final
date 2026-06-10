@@ -39,6 +39,7 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
 
   // ── Paso 2: fechas calculadas automáticamente ─────────────────────────────
   const [fechasCalculadas, setFechasCalculadas] = useState([]);  // string[]
+  const [horariosClases, setHorariosClases] = useState([]);
 
   // ── Paso 3: exámenes ──────────────────────────────────────────────────────
   const [examenes, setExamenes] = useState([]);
@@ -138,6 +139,8 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
     const maxPosicion = Math.max(...posicionesOcupadas, total);
     const fechasClases = fechasCalculadas.slice(0, maxPosicion + 5);
 
+    const horarioPorPosicion = (pos) => horariosClases[pos - 1] || {};
+
     // ── Marcar recuperatorios por POSICIÓN (más robusto que por fecha) ─────
     // recupPorExamen: Map<numeroExamen, {desde, hasta}>
     const getRecupForPos = (pos) => {
@@ -201,23 +204,32 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
          const esRecup = numExRecup !== null;
 
         if (esExamen) {
+          const horario = horarioPorPosicion(pos);
           const ex = examenes[numEx - 1];
           resultado.push({
             numero: pos, fecha, tipo: 'examen', numExamen: numEx, unidad: null,
+            hora_inicio: horario.hora_inicio || '08:00',
+            hora_fin: horario.hora_fin || '09:00',
             tema: `Examen ${numEx}${ex?.clasesExamen ? ` — ${ex.clasesExamen}` : ''}`,
           });
         } else if (esRecup) {
+          const horario = horarioPorPosicion(pos);
           resultado.push({
             numero: pos, fecha, tipo: 'recuperatorio', numExamen: numExRecup, unidad: null,
+            hora_inicio: horario.hora_inicio || '08:00',
+            hora_fin: horario.hora_fin || '09:00',
             tema: `Recuperatorio Examen ${numExRecup}`,
           });
         } else {
+          const horario = horarioPorPosicion(pos);
           numClaseReal++;
           const claseIA = clasesIA[iaIdx] || {};
           resultado.push({
             numero: pos, fecha, tipo: 'clase',
             unidad: claseIA.unidad || null,
             numExamen: null,
+            hora_inicio: horario.hora_inicio || '08:00',
+            hora_fin: horario.hora_fin || '09:00',
             tema: claseIA.tema || `Clase ${numClaseReal}`,
           });
           iaIdx++;
@@ -243,15 +255,24 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
         const esRecup  = numExRecup !== null;
 
         if (esExamen) {
+          const horario = horarioPorPosicion(pos);
           resultado.push({ numero: pos, fecha, tipo: 'examen', numExamen: numEx, unidad: null,
+            hora_inicio: horario.hora_inicio || '08:00',
+            hora_fin: horario.hora_fin || '09:00',
             tema: `Examen ${numEx}` });
         } else if (esRecup) {
+          const horario = horarioPorPosicion(pos);
           resultado.push({ numero: pos, fecha, tipo: 'recuperatorio', numExamen: numExRecup, unidad: null,
+            hora_inicio: horario.hora_inicio || '08:00',
+            hora_fin: horario.hora_fin || '09:00',
             tema: `Recuperatorio Examen ${numExRecup}` });
         } else {
+          const horario = horarioPorPosicion(pos);
           const idxU = Math.floor((iaIdx / Math.max(fechasSoloClases.length, 1)) * totalUnidades);
           const u    = datosMateria.unidades[Math.min(idxU, totalUnidades - 1)];
           resultado.push({ numero: pos, fecha, tipo: 'clase', unidad: u?.numero || 1, numExamen: null,
+            hora_inicio: horario.hora_inicio || '08:00',
+            hora_fin: horario.hora_fin || '09:00',
             tema: u?.nombre ? `${u.nombre}` : `Clase ${pos}` });
           iaIdx++;
         }
@@ -270,12 +291,17 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
       const userId = user?.id || user?.id_docente || user?.user?.id;
 
       // Filtrar clases sin fecha válida antes de enviar
-      const clasesValidas = clases.filter(c => c.fecha && c.fecha.length === 10);
+      const clasesValidas = clases.filter(c => c.fecha);
       if (clasesValidas.length === 0) {
         alert('❌ Ninguna clase tiene fecha asignada. Revisá el paso de calendario.');
         setGuardando(false);
         return;
       }
+
+      const combinarFechaHora = (fecha, hora) => {
+        const horaNormalizada = hora && hora.length === 5 ? `${hora}:00` : (hora || '08:00:00');
+        return `${fecha}T${horaNormalizada}`;
+      };
 
       const payload = {
         id_docente:       userId,
@@ -286,7 +312,7 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
         contenido_minimo: datosMateria.contenido_minimo || '',
         clases: clasesValidas.map(c => ({
           numero:           c.numero,
-          fecha_programada: c.fecha,
+          fecha_programada: combinarFechaHora(c.fecha, c.hora_inicio),
           tema_clase:       c.tema,
           tipo:             c.tipo,
           estado_clase:     'programada',
@@ -402,6 +428,8 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
             totalClases={parseInt(datosMateria.cant_clases) || 0}
             fechasCalculadas={fechasCalculadas}
             setFechasCalculadas={setFechasCalculadas}
+            horariosClases={horariosClases}
+            setHorariosClases={setHorariosClases}
           />
         )}
         {paso === 2 && (

@@ -363,7 +363,7 @@ async def proximas_clases(id_docente: str, dias: int = 30):
     """
     try:
         desde = date.today().isoformat()
-        hasta = (date.today() + timedelta(days=dias)).isoformat()
+        hasta = (date.today() + timedelta(days=dias)).isoformat() + "T23:59:59"
 
         # Traer IDs de planificaciones del docente
         plans_ids = [

@@ -177,6 +177,7 @@ async def get_mes_completo(id_docente: str, anio: int, mes: int):
         _, dias_mes = monthrange(anio, mes)
         fecha_inicio = date(anio, mes, 1)
         fecha_fin    = date(anio, mes, dias_mes)
+        fecha_fin_dt = f"{fecha_fin.isoformat()}T23:59:59"
 
         # 1) Eventos recurrentes del docente
         ev_result = supabase.table("eventos_recurrentes") \
@@ -274,7 +275,7 @@ async def get_mes_completo(id_docente: str, anio: int, mes: int):
                 .select("*") \
                 .in_("id_planificacion", list(all_plans.keys())) \
                 .gte("fecha_programada", fecha_inicio.isoformat()) \
-                .lte("fecha_programada", fecha_fin.isoformat()) \
+                .lte("fecha_programada", fecha_fin_dt) \
                 .order("fecha_programada", desc=False) \
                 .execute()
             cronograma = [

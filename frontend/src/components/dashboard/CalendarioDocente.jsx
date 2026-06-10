@@ -5,6 +5,13 @@ import interactionPlugin from '@fullcalendar/interaction';
 
 import api from '../../api/axios';
 
+const formatearHora = (valor) => {
+  if (!valor) return '';
+  const fecha = new Date(valor);
+  if (Number.isNaN(fecha.getTime())) return '';
+  return fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+};
+
 
 const CalendarioDocente = ({ idPlanificacion }) => {
   const [eventos, setEventos] = useState([]);
@@ -22,7 +29,7 @@ const CalendarioDocente = ({ idPlanificacion }) => {
         // Mapeamos los datos de la base de datos al formato que entiende FullCalendar
         const mapeados = res.data.map(clase => ({
           id: clase.id,
-          title: `${clase.tipo === 'examen' ? 'Examen' : clase.tipo === 'recuperatorio' ? 'Recup.' : 'Clase'} ${clase.numero}${clase.tema_clase ? ` · ${clase.tema_clase}` : ''}`,
+          title: `${formatearHora(clase.fecha_programada) ? `${formatearHora(clase.fecha_programada)} · ` : ''}${clase.tipo === 'examen' ? 'Examen' : clase.tipo === 'recuperatorio' ? 'Recup.' : 'Clase'} ${clase.numero}${clase.tema_clase ? ` · ${clase.tema_clase}` : ''}`,
           start: clase.fecha_programada,
           extendedProps: { 
             estado: clase.estado_clase 
