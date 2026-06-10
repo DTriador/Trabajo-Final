@@ -45,6 +45,17 @@ const formatFechaLarga = (iso) => {
   return `${diasNombre[f.getDay()]} ${d} de ${MESES_LARGO[m - 1]} de ${y}`;
 };
 
+const tipoCronogramaEtiqueta = (tipo, numero) => {
+  const etiqueta = tipo === 'examen' ? 'Examen' : tipo === 'recuperatorio' ? 'Recup.' : 'Clase';
+  return `${etiqueta} ${numero}`.trim();
+};
+
+const tipoCronogramaColor = (tipo) => {
+  if (tipo === 'examen') return '#f59e0b';
+  if (tipo === 'recuperatorio') return '#22c55e';
+  return '#818cf8';
+};
+
 export default function CalendarioView({ onVolver }) {
   const { user } = useAuth();
   const userId = user?.id || user?.id_docente || user?.user?.id;
@@ -53,6 +64,7 @@ export default function CalendarioView({ onVolver }) {
   const [datos, setDatos]         = useState({ eventos: [], planificaciones: [], feriados: [] });
   const [cargando, setCargando]   = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [cronograma, setCronograma] = useState([]);
 
   const [modalEvento,    setModalEvento]    = useState(false);
   const [modalFeriado,   setModalFeriado]   = useState(false);
@@ -75,6 +87,7 @@ export default function CalendarioView({ onVolver }) {
       const m    = mes.getMonth() + 1;
       const res  = await api.get(`/calendario/mes/${userId}/${anio}/${m}`);
       setDatos(res.data);
+      setCronograma(res.data.cronograma || []);
     } catch (e) {
       console.error('Error cargando mes:', e);
     } finally {
@@ -108,6 +121,7 @@ export default function CalendarioView({ onVolver }) {
     evs:   datos.eventos.filter(e => e.fecha === iso),
     plans: datos.planificaciones.filter(p => p.fecha === iso),
     fers:  datos.feriados.filter(f => f.fecha_inicio <= iso && f.fecha_fin >= iso),
+    cronograma: cronograma.filter(c => (c.fecha_programada || '').slice(0, 10) === iso),
   });
 
   // ── Abrir modal de día ────────────────────────────────────────────────────
@@ -312,13 +326,13 @@ export default function CalendarioView({ onVolver }) {
             const iso          = toISO(d);
             const esOtroMes    = d.getMonth() !== mesActual;
             const esHoy        = iso === toISO(new Date());
-            const { evs, plans, fers } = eventosDelDia(iso);
+            const { evs, plans, fers, cronograma } = eventosDelDia(iso);
             const tieneFeriado = fers.length > 0;
 
             return (
               <div
                 key={i}
-                onClick={() => abrirModalDia(iso, { evs, plans, fers })}
+                onClick={() => abrirModalDia(iso, { evs, plans, fers, cronograma })}
                 style={{
                   minHeight: 80, borderRadius: 10,
                   background: tieneFeriado ? '#ffedd5' : esOtroMes ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.7)',
@@ -361,6 +375,15 @@ export default function CalendarioView({ onVolver }) {
                     📋 {(p.nombre_clase||'').length > 8 ? (p.nombre_clase||'').slice(0,8)+'…' : p.nombre_clase}
                   </div>
                 ))}
+
+                {cronograma.map((c, ci) => (
+                  <div key={ci}
+                    onClick={e => { e.stopPropagation(); setPlanSeleccionada(c.id_planificacion); }}
+                    style={{ ...chipStyle(tipoCronogramaColor(c.tipo)), cursor: 'pointer' }}
+                    title={`${tipoCronogramaEtiqueta(c.tipo, c.numero)}${c.nombre_plan ? ` · ${c.nombre_plan}` : ''}`}>
+                    {tipoCronogramaEtiqueta(c.tipo, c.numero)}
+                  </div>
+                ))}
               </div>
             );
           })}
@@ -375,7 +398,7 @@ export default function CalendarioView({ onVolver }) {
           </h3>
 
           {/* Sin eventos */}
-          {modalDia.evs.length === 0 && modalDia.plans.length === 0 && modalDia.fers.length === 0 && (
+          {modalDia.evs.length === 0 && modalDia.plans.length === 0 && modalDia.fers.length === 0 && modalDia.cronograma.length === 0 && (
             <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: '1.1rem' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>📭</div>
               Sin eventos para este día
@@ -468,6 +491,29 @@ export default function CalendarioView({ onVolver }) {
                         📄 Ver planificación
                       </a>
                     )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {modalDia.cronograma.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 'bold', color: '#374151', marginBottom: 6, fontSize: '0.95rem' }}>
+                📅 Cronograma del día
+              </div>
+              {modalDia.cronograma.map((c, i) => (
+                <div key={i} style={{
+                  background: `${tipoCronogramaColor(c.tipo)}22`,
+                  border: `2px solid ${tipoCronogramaColor(c.tipo)}`,
+                  borderRadius: 10, padding: '10px 14px', marginBottom: 8,
+                }}>
+                  <div style={{ fontWeight: 'bold', color: '#1f2937', fontSize: '1.05rem' }}>
+                    {tipoCronogramaEtiqueta(c.tipo, c.numero)}
+                  </div>
+                  <div style={{ color: '#555', fontSize: '0.9rem', marginTop: 4 }}>
+                    {c.nombre_plan && <span style={{ marginRight: 10 }}>📚 {c.nombre_plan}</span>}
+                    {c.tema_clase && <span>📌 {c.tema_clase}</span>}
                   </div>
                 </div>
               ))}

@@ -302,27 +302,53 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
       };
 
         const res = await api.post('/generar/planificacion/wizard', payload);
+        const idPlan = res.data?.id_planificacion;
+        const nombreArchivoBase = (datosMateria.nombre_clase || datosMateria.tema || 'Planificacion').replace(/\s+/g, '_');
+        const advertencias = [];
 
-        // Subir archivos — en bloque separado para no cancelar el guardado si falla
+        // Subir archivos adjuntos primero, sin bloquear el guardado si algo falla
         if (datosMateria.archivos?.length > 0) {
           try {
             const fd = new FormData();
-            datosMateria.archivos.forEach(f => fd.append('file', f));
+            datosMateria.archivos.forEach(f => fd.append('files', f));
             fd.append('id_docente', userId);
-            await api.post(`/documentos/subir`, fd, {
+            await api.post('/documentos/subir', fd, {
               headers: { 'Content-Type': undefined },
             });
           } catch (uploadErr) {
             console.warn('Archivos no subidos:', uploadErr);
-            // Avisamos pero no bloqueamos — la planificación ya está guardada
-            alert('✅ ¡Planificación guardada!\n⚠️ Los archivos adjuntos no se pudieron subir. Podés subirlos desde "Mis Materiales".');
-            onPlanificacionGuardada?.(res.data);
-            onClose();
-            return;
+            advertencias.push('los archivos adjuntos no se pudieron subir');
           }
         }
 
-        alert('✅ ¡Planificación guardada! Ya podés verla en el Calendario.');
+        // Guardar también la planificación generada como archivo en Mis Materiales
+        if (idPlan) {
+          try {
+            const exportRes = await api.get(`/generar/planificacion/${idPlan}/exportar-word`, {
+              responseType: 'blob',
+            });
+            const archivoPlan = new File(
+              [exportRes.data],
+              `${nombreArchivoBase}.docx`,
+              { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
+            );
+            const fdPlan = new FormData();
+            fdPlan.append('files', archivoPlan);
+            fdPlan.append('id_docente', userId);
+            await api.post('/documentos/subir', fdPlan, {
+              headers: { 'Content-Type': undefined },
+            });
+          } catch (planFileErr) {
+            console.warn('Archivo de planificación no subido:', planFileErr);
+            advertencias.push('el archivo de la planificación no se pudo guardar en Mis Materiales');
+          }
+        }
+
+        if (advertencias.length > 0) {
+          alert(`✅ ¡Planificación guardada! Ya podés verla en el Calendario.\n⚠️ ${advertencias.join(' y ')}.`);
+        } else {
+          alert('✅ ¡Planificación guardada! Ya podés verla en el Calendario y descargarla desde Mis Materiales.');
+        }
         onPlanificacionGuardada?.(res.data);
         onClose();
     } catch (error) {

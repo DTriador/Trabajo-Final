@@ -22,14 +22,26 @@ const CalendarioDocente = ({ idPlanificacion }) => {
         // Mapeamos los datos de la base de datos al formato que entiende FullCalendar
         const mapeados = res.data.map(clase => ({
           id: clase.id,
-          title: clase.tema_clase || "Clase sin tema",
+          title: `${clase.tipo === 'examen' ? 'Examen' : clase.tipo === 'recuperatorio' ? 'Recup.' : 'Clase'} ${clase.numero}${clase.tema_clase ? ` · ${clase.tema_clase}` : ''}`,
           start: clase.fecha_programada,
           extendedProps: { 
             estado: clase.estado_clase 
           },
           // Colores dinámicos según el estado (RF05)
-          backgroundColor: clase.estado_clase === 'reprogramada' ? '#f87171' : '#3b82f6',
-          borderColor: clase.estado_clase === 'reprogramada' ? '#ef4444' : '#2563eb',
+          backgroundColor: clase.estado_clase === 'reprogramada'
+            ? '#f87171'
+            : clase.tipo === 'examen'
+              ? '#f59e0b'
+              : clase.tipo === 'recuperatorio'
+                ? '#22c55e'
+                : '#3b82f6',
+          borderColor: clase.estado_clase === 'reprogramada'
+            ? '#ef4444'
+            : clase.tipo === 'examen'
+              ? '#d97706'
+              : clase.tipo === 'recuperatorio'
+                ? '#16a34a'
+                : '#2563eb',
         }));
         
         setEventos(mapeados);
@@ -80,6 +92,14 @@ const CalendarioDocente = ({ idPlanificacion }) => {
         <div className="flex items-center">
           <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
           <span>Programada</span>
+        </div>
+        <div className="flex items-center">
+          <div className="w-3 h-3 bg-amber-500 rounded-full mr-2"></div>
+          <span>Examen</span>
+        </div>
+        <div className="flex items-center">
+          <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+          <span>Recuperatorio</span>
         </div>
         <div className="flex items-center">
           <div className="w-3 h-3 bg-red-400 rounded-full mr-2"></div>

@@ -23,6 +23,11 @@ const calcularRestante = (fecha) => {
   return { texto, urgente: dias === 0 && horas < 3, vencido: false };
 };
 
+const etiquetaCronograma = (tipo, numero) => {
+  const base = tipo === 'examen' ? 'Examen' : tipo === 'recuperatorio' ? 'Recup.' : 'Clase';
+  return `${base} ${numero}`.trim();
+};
+
 const ProximasClases = () => {
   const { user } = useAuth();
   const [clases, setClases]     = useState([]);
@@ -34,7 +39,10 @@ const ProximasClases = () => {
 
   useEffect(() => {
     const cargar = async () => {
-      if (!userId) return;
+      if (!userId) {
+        setCargando(false);
+        return;
+      }
       try {
         const res = await api.get(`/generar/planificacion/proximas/${userId}?dias=30`);
         setClases(res.data || []);
@@ -67,20 +75,25 @@ const ProximasClases = () => {
       ) : (
         <div className="proximas-lista">
           {clases.slice(0, 2).map(c => {
-            const r = calcularRestante(c.fecha);
-            const fechaFmt = new Date(c.fecha).toLocaleString('es-AR', {
-              day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-            });
+            const fecha = c.fecha_programada || c.fecha;
+            const r = calcularRestante(fecha);
             return (
               <div
-                key={c.id_planificacion}
+                key={c.id}
                 className={`proxima-card ${r.urgente ? 'urgente' : ''} ${r.vencido ? 'vencida' : ''}`}
                 onClick={() => setSeleccionada(c)}
                 style={{ cursor: 'pointer' }}
                 title="Ver detalles"
               >
-                <div className="proxima-nombre">{c.nombre_clase}</div>
-                <div className="proxima-fecha">📅 {fechaFmt}</div>
+                <div className="proxima-nombre">{etiquetaCronograma(c.tipo, c.numero)}</div>
+                <div className="proxima-fecha">
+                  📅 {new Date(fecha).toLocaleString('es-AR', {
+                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                  })}
+                </div>
+                <div className="proxima-fecha" style={{ opacity: 0.85 }}>
+                  {c.planificacion?.nombre_clase || c.tema_clase || 'Sin detalle de planificación'}
+                </div>
               </div>
             );
           })}
@@ -121,28 +134,37 @@ const ProximasClases = () => {
             </button>
 
             <h2 style={{ color: '#be185d', marginTop: 0, fontSize: '2rem', paddingRight: 36 }}>
-              📚 {seleccionada.nombre_clase}
+              📚 {etiquetaCronograma(seleccionada.tipo, seleccionada.numero)}
             </h2>
 
             <div style={{ background: '#fef3c7', padding: 16, borderRadius: 10, marginBottom: 16 }}>
               <p style={{ margin: '4px 0', fontSize: '1.1rem' }}>
-                <b>📅 Fecha:</b> {fechaCompleta(seleccionada.fecha)}
+                <b>📅 Fecha:</b> {fechaCompleta(seleccionada.fecha_programada || seleccionada.fecha)}
               </p>
-              {seleccionada.duracion && (
+              {(seleccionada.duracion || seleccionada.planificacion?.duracion) && (
                 <p style={{ margin: '4px 0', fontSize: '1.1rem' }}>
-                  <b>⏱ Duración:</b> {seleccionada.duracion}
+                  <b>⏱ Duración:</b> {seleccionada.duracion || seleccionada.planificacion?.duracion}
                 </p>
               )}
               <p style={{ margin: '4px 0', fontSize: '1.1rem', color: '#be185d' }}>
-                <b>⏰ {calcularRestante(seleccionada.fecha).texto}</b>
+                <b>⏰ {calcularRestante(seleccionada.fecha_programada || seleccionada.fecha).texto}</b>
               </p>
             </div>
 
-            {seleccionada.tema && (
+            {(seleccionada.tema_clase || seleccionada.tema || seleccionada.planificacion?.tema) && (
               <div style={{ marginBottom: 16 }}>
                 <b style={{ fontSize: '1.1rem' }}>📌 Tema:</b>
                 <p style={{ margin: '4px 0', color: '#475569', fontSize: '1.05rem' }}>
-                  {seleccionada.tema}
+                  {seleccionada.tema_clase || seleccionada.tema || seleccionada.planificacion?.tema}
+                </p>
+              </div>
+            )}
+
+            {seleccionada.planificacion?.nombre_clase && (
+              <div style={{ marginBottom: 16 }}>
+                <b style={{ fontSize: '1.1rem' }}>📚 Planificación:</b>
+                <p style={{ margin: '4px 0', color: '#475569', fontSize: '1.05rem' }}>
+                  {seleccionada.planificacion.nombre_clase}
                 </p>
               </div>
             )}
