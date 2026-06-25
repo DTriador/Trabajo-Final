@@ -242,16 +242,16 @@ const ProximasClases = () => {
         <div
           onClick={() => setSeleccionada(null)}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-            zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center'
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+            zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center'
           }}
         >
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: 'white', borderRadius: 16, padding: 30,
-              width: '90%', maxWidth: 520, maxHeight: '85vh', overflowY: 'auto',
-              fontFamily: "'Indie Flower', cursive",
+              background: 'white', borderRadius: 18, padding: 32,
+              width: 'min(760px, 92vw)', maxWidth: 760, maxHeight: '80vh', overflowY: 'auto',
+              minWidth: 520, fontFamily: "'Indie Flower', cursive",
               position: 'relative',
             }}
           >
