@@ -243,16 +243,17 @@ const ProximasClases = () => {
           onClick={() => setSeleccionada(null)}
           style={{
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-            zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center'
+            zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '20px', overflowY: 'auto'
           }}
         >
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: 'white', borderRadius: 18, padding: 32,
-              width: 'min(760px, 92vw)', maxWidth: 760, maxHeight: '80vh', overflowY: 'auto',
-              minWidth: 520, fontFamily: "'Indie Flower', cursive",
-              position: 'relative',
+              background: 'white', borderRadius: 18, padding: '24px 24px 20px',
+              width: 'min(720px, 100%)', maxWidth: 720, maxHeight: 'min(84vh, 760px)', overflowY: 'auto',
+              minWidth: 'min(320px, 100%)', fontFamily: "'Indie Flower', cursive",
+              position: 'relative', boxSizing: 'border-box'
             }}
           >
             {/* ✕ Cerrar — esquina superior derecha */}
@@ -306,8 +307,8 @@ const ProximasClases = () => {
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24, flexWrap: 'wrap' }}>
-              {seleccionada.url_archivo && (
+            {seleccionada.url_archivo && (
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24, flexWrap: 'wrap' }}>
                 <a
                   href={seleccionada.url_archivo}
                   target="_blank"
@@ -319,17 +320,8 @@ const ProximasClases = () => {
                 >
                   ⬇ Descargar planificación
                 </a>
-              )}
-              <button
-                onClick={() => setSeleccionada(null)}
-                style={{
-                  padding: '10px 20px', background: '#e5e7eb', border: 'none',
-                  borderRadius: 8, cursor: 'pointer', fontWeight: 'bold'
-                }}
-              >
-                Cerrar
-              </button>
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -153,7 +153,7 @@ const PerfilView = ({ onVolver }) => {
                         <div key={campo.name} className="perfil-data-row">
                             <label className="perfil-label">{campo.label}</label>
                             {campo.static ? (
-                                <span className="perfil-value-text italic text-gray-500">{formData[campo.name]}</span>
+                                <span className="perfil-value-text italic text-black">{formData[campo.name]}</span>
                             ) : editando ? (
                                 <input type={campo.type || 'text'} name={campo.name}
                                     value={formData[campo.name]} onChange={handleChange}

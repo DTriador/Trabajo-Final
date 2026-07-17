@@ -175,7 +175,7 @@ export function PasoMateria({ data, onChange, escuelas, cursos, onEscuelaChange 
         </div>
 
         {data.unidades.length === 0 && (
-          <p style={{ color: '#94a3b8', fontStyle: 'italic', textAlign: 'center', padding: 16 }}>
+          <p style={{ color: '#111827', fontStyle: 'italic', textAlign: 'center', padding: 16 }}>
             Agregá al menos una unidad con su contenido mínimo.
           </p>
         )}
@@ -223,7 +223,7 @@ export function PasoMateria({ data, onChange, escuelas, cursos, onEscuelaChange 
         <div onClick={() => document.getElementById('wiz-file-input').click()}
           style={{
             border: '2px dashed #cbd5e1', borderRadius: 10, padding: 20,
-            textAlign: 'center', color: '#94a3b8', cursor: 'pointer',
+            textAlign: 'center', color: '#111827', cursor: 'pointer',
           }}>
           📂 Hacé click para adjuntar PDFs u otros archivos
         </div>
@@ -422,7 +422,7 @@ export function PasoCalendario({
           border: `1.5px solid ${ok ? '#86efac' : disponibles > 0 ? '#fcd34d' : '#e2e8f0'}`,
         }}>
           {disponibles === 0 ? (
-            <p style={{ margin: 0, color: '#64748b', fontSize: '0.88rem' }}>
+            <p style={{ margin: 0, color: '#111827', fontSize: '0.88rem' }}>
               Seleccioná un rango y los días de clase. Necesitás <b>{totalClases}</b> fechas.
             </p>
           ) : ok ? (
@@ -450,8 +450,8 @@ export function PasoCalendario({
           <button type="button" onClick={nextMes} style={S.btnPrimary}>›</button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, textAlign: 'center', fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>
-          {['D','L','M','X','J','V','S'].map(d => <div key={d}>{d}</div>)}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, textAlign: 'center', fontSize: '0.8rem', color: '#111827', marginBottom: 4 }}>
+          {['D','L','M','X','J','V','S'].map(d => <div key={d} style={{ fontWeight: 'bold' }}>{d}</div>)}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
@@ -507,7 +507,7 @@ export function PasoCalendario({
       <div style={S.card}>
         <p style={S.sectionTitle}>🕒 Horarios por día de dictado</p>
         {DIAS_CHIP.filter(day => diasSemana.has(day.dow)).length === 0 ? (
-          <p style={{ color: '#94a3b8', fontStyle: 'italic', textAlign: 'center', padding: 12 }}>
+          <p style={{ color: '#111827', fontStyle: 'italic', textAlign: 'center', padding: 12 }}>
             Elegí primero los días de clase y luego definí el horario que quieres para cada día.
           </p>
         ) : (
@@ -522,7 +522,7 @@ export function PasoCalendario({
                 }}>
                   <div>
                     <div style={{ fontWeight: 'bold', color: '#1f2937' }}>{label}</div>
-                    <div style={{ fontSize: '0.85rem', color: '#64748b' }}>Todas las clases de {label} usarán este horario</div>
+                    <div style={{ fontSize: '0.85rem', color: '#111827' }}>Todas las clases de {label} usarán este horario</div>
                   </div>
                   <div>
                     <label style={S.label}>Inicio</label>
@@ -544,7 +544,7 @@ export function PasoCalendario({
       {/* Feriados extra manuales */}
       <div style={S.card}>
         <p style={S.sectionTitle}>🚫 Días sin clase extra</p>
-        <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: 10 }}>
+        <p style={{ fontSize: '0.82rem', color: '#374151', marginBottom: 10, fontWeight: 'bold' }}>
           Los feriados nacionales y los tuyos guardados en el calendario se excluyen automáticamente.
         </p>
         <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -646,7 +646,7 @@ export function PasoExamenes({ examenes, setExamenes }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 8, alignItems: 'center' }}>
                 <input type="number" style={{ ...S.input, marginBottom: 0 }} placeholder="Desde clase N°" min={1}
                   value={ex.clasesRecupDesde} onChange={e => update(i, 'clasesRecupDesde', e.target.value)} />
-                <span style={{ fontSize: '0.9rem', color: '#64748b' }}>hasta</span>
+                <span style={{ fontSize: '0.9rem', color: '#111827' }}>hasta</span>
                 <input type="number" style={{ ...S.input, marginBottom: 0 }} placeholder="Hasta clase N°" min={1}
                   value={ex.clasesRecupHasta} onChange={e => update(i, 'clasesRecupHasta', e.target.value)} />
               </div>
@@ -656,7 +656,7 @@ export function PasoExamenes({ examenes, setExamenes }) {
       ))}
 
       {examenes.length === 0 && (
-        <p style={{ color: '#94a3b8', fontStyle: 'italic', textAlign: 'center', padding: 20 }}>
+        <p style={{ color: '#111827', fontStyle: 'italic', textAlign: 'center', padding: 20 }}>
           Sin exámenes configurados.
         </p>
       )}
@@ -678,7 +678,7 @@ export function PasoPreview({ clases, setClases, onGuardar, guardando, generando
       <p style={{ fontWeight: 'bold', color: '#1e3a8a', fontSize: '1.1rem', marginBottom: 8 }}>
         La IA está distribuyendo los temas entre las clases...
       </p>
-      <p style={{ color: '#64748b', fontSize: '0.88rem' }}>
+      <p style={{ color: '#111827', fontSize: '0.88rem' }}>
         Groq está analizando el contenido mínimo de cada unidad y asignando los temas a cada fecha.
         Puede tardar unos segundos.
       </p>
@@ -686,7 +686,7 @@ export function PasoPreview({ clases, setClases, onGuardar, guardando, generando
   );
 
   if (clases.length === 0) return (
-    <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+    <div style={{ textAlign: 'center', padding: 40, color: '#111827' }}>
       No se generaron clases. Revisá los pasos anteriores.
     </div>
   );
@@ -707,7 +707,7 @@ export function PasoPreview({ clases, setClases, onGuardar, guardando, generando
             ))}
           </div>
         </div>
-        <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 10 }}>
+        <p style={{ fontSize: '0.8rem', color: '#111827', marginBottom: 10 }}>
           Editá el tema de cualquier clase haciendo click. Las fechas también son editables.
         </p>
 
@@ -738,7 +738,7 @@ export function PasoPreview({ clases, setClases, onGuardar, guardando, generando
                       style={{
                         border: 'none', borderBottom: '1px dashed #94a3b8',
                         background: 'transparent', fontSize: '0.78rem',
-                        color: '#64748b', fontFamily: "'Inkfree', cursive",
+                        color: '#111827', fontFamily: "'Inkfree', cursive",
                       }} />
                     <span style={S.badge(ct)}>
                       {c.tipo === 'clase' ? `Clase ${c.numero}` : c.tipo === 'examen' ? `Examen ${c.numExamen || ''}` : `Recup. ${c.numExamen || ''}`}
@@ -757,13 +757,13 @@ export function PasoPreview({ clases, setClases, onGuardar, guardando, generando
                     }} />
 
                   {(c.hora_inicio || c.hora_fin) && (
-                    <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#111827' }}>
                       🕒 {c.hora_inicio || '--:--'} a {c.hora_fin || '--:--'}
                     </p>
                   )}
 
                   {/* Línea de referencia tipo "Clase N° 25 (16/06): Tema" */}
-                  <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#94a3b8' }}>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#111827' }}>
                     → {c.tipo === 'clase' ? `Clase N° ${c.numero}` : c.tipo === 'examen' ? 'Examen' : 'Recuperatorio'} ({fechaStr}): {c.tema}
                   </p>
                 </div>

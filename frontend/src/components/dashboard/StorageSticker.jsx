@@ -9,7 +9,7 @@ const StorageSticker = ({ usoStorage, visible }) => {
     <div
       className="handwritten"
       style={{
-        background: 'var(--postit-bg)',
+        background: 'rgba(255,255,255,0.62)',
         padding: '10px 14px',
         borderRadius: '4px',
         borderBottomRightRadius: '12px 36px',

@@ -100,6 +100,19 @@ def _siguiente_habil(fecha_iso: str, feriados: list, dias_max: int = 60) -> str:
     return fecha_iso  # fallback: misma fecha si no encontró
 
 
+def _obtener_planificacion_por_id(id_plan: str):
+    """Busca la planificación por id_planificacion o por id, por compatibilidad con distintos esquemas."""
+    for column in ("id_planificacion", "id"):
+        try:
+            res = supabase.table("planificacion").select("*").eq(column, id_plan).single().execute()
+            data = getattr(res, "data", None)
+            if data:
+                return data
+        except Exception:
+            continue
+    return None
+
+
 def _cargar_feriados(id_docente: str) -> list:
     """Carga feriados nacionales + propios del docente."""
     try:
@@ -613,12 +626,7 @@ Distribuí los temas de todas las unidades entre estas {payload.total_clases} cl
 async def exportar_planificacion_word(id_plan: str):
     try:
         # Obtener datos de la planificación
-        plan_res = supabase.table("planificacion") \
-            .select("*") \
-            .eq("id", id_plan) \
-            .single() \
-            .execute()
-        plan = plan_res.data
+        plan = _obtener_planificacion_por_id(id_plan)
         if not plan:
             raise HTTPException(status_code=404, detail="Planificación no encontrada")
         clases_res = supabase.table("cronograma_clases") \
@@ -678,7 +686,7 @@ async def exportar_planificacion_word(id_plan: str):
     except Exception as e:
         print(f"❌ ERROR exportar word: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
+
 # ── Listar planificaciones del docente ────────────────────────────────────────
 @router.get("/planificacion/lista/{id_docente}")
 async def listar_planificaciones(id_docente: str):
@@ -707,8 +715,7 @@ async def listar_planificaciones(id_docente: str):
 @router.get("/planificacion/{id_plan}/exportar-word")
 async def exportar_planificacion_word(id_plan: str):
     try:
-        plan_res = supabase.table("planificacion").select("*").eq("id", id_plan).single().execute()
-        plan = plan_res.data
+        plan = _obtener_planificacion_por_id(id_plan)
         if not plan:
             raise HTTPException(status_code=404, detail="Planificación no encontrada")
         clases_res = supabase.table("cronograma_clases") \
@@ -765,8 +772,7 @@ async def exportar_planificacion_word(id_plan: str):
 @router.get("/planificacion/{id_plan}/exportar-pdf")
 async def exportar_planificacion_pdf(id_plan: str):
     try:
-        plan_res = supabase.table("planificacion").select("*").eq("id", id_plan).single().execute()
-        plan = plan_res.data
+        plan = _obtener_planificacion_por_id(id_plan)
         if not plan:
             raise HTTPException(status_code=404, detail="Planificación no encontrada")
         clases_res = supabase.table("cronograma_clases") \

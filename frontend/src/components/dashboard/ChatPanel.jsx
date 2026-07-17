@@ -61,7 +61,7 @@ const ChatPanel = () => {
       <FileUploadZone onFileReady={handleFileAccepted}>
         <div className="flex-1 p-4 overflow-y-auto space-y-6">
           {messages.length === 0 && (
-            <div className="text-center mt-10 text-white-400">
+            <div className="text-center mt-10 text-black">
               <p className="text-2xl mb-2">📓</p>
               <p style={{ fontFamily: 'Inkfree', fontSize: '1.5rem' }}>Escribí algo en tu cuaderno...</p>
             </div>
@@ -70,13 +70,13 @@ const ChatPanel = () => {
           {messages.map((msg, index) => (
             <div key={index} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
                {/* ETIQUETA DE QUIÉN HABLA */}
-               <span className="text-[10px] font-black text-white-400 uppercase tracking-widest mb-1">
+               <span className="text-[10px] font-black text-black uppercase tracking-widest mb-1">
                 {msg.sender === 'user' ? 'Tú' : 'IA'}
               </span>
 
               {/* EL MENSAJE CON LA MODIFICACIÓN QUE PEDISTE */}
               <div 
-                className={`max-w-[90%] p-2 ${msg.sender === 'user' ? 'text-blue-800' : 'text-white-700 bg-gray-50/50 rounded-lg'}`}
+                className={`max-w-[90%] p-2 ${msg.sender === 'user' ? 'text-blue-800' : 'text-black bg-gray-50/50 rounded-lg'}`}
                 style={{ 
                   fontFamily: msg.sender === 'user' ? 'Inkfree, cursive' : 'inherit',
                   fontSize: msg.sender === 'user' ? '1.8rem' : '1.1rem', // Un poco más grande Inkfree para que se note

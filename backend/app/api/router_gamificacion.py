@@ -151,11 +151,13 @@ async def generar_crucigrama(
             pdf_content = await file.read()
             datos_json = await RAGOrchestrator.get_context_from_file_and_generate(
                 pdf_content, prompt_personalizado, SYSTEM_PROMPT_CRUCIGRAMA,
+                id_docente=id_docente,
             )
         else:
             ctx = _contexto_biblio(contenido_minimo, bibliografia)
             datos_json = await RAGOrchestrator.get_context_and_generate(
                 f"{prompt_personalizado}\n\n{ctx}", SYSTEM_PROMPT_CRUCIGRAMA,
+                id_docente=id_docente,
             )
 
         items = []
@@ -384,11 +386,13 @@ async def generar_unir_flechas(
             pdf_content = await file.read()
             datos_json = await RAGOrchestrator.get_context_from_file_and_generate(
                 pdf_content, prompt_personalizado, SYSTEM_PROMPT_UNIR,
+                id_docente=id_docente,
             )
         else:
             ctx = _contexto_biblio(contenido_minimo, bibliografia)
             datos_json = await RAGOrchestrator.get_context_and_generate(
                 f"{prompt_personalizado}\n\n{ctx}", SYSTEM_PROMPT_UNIR,
+                id_docente=id_docente,
             )
 
         pares = []
@@ -533,11 +537,13 @@ async def generar_sopa_letras(
             pdf_content = await file.read()
             datos_json = await RAGOrchestrator.get_context_from_file_and_generate(
                 pdf_content, prompt_personalizado, SYSTEM_PROMPT_SOPA,
+                id_docente=id_docente,
             )
         else:
             ctx = _contexto_biblio(contenido_minimo, bibliografia)
             datos_json = await RAGOrchestrator.get_context_and_generate(
                 f"{prompt_personalizado}\n\n{ctx}", SYSTEM_PROMPT_SOPA,
+                id_docente=id_docente,
             )
 
         resumen  = (datos_json or {}).get("resumen", "")

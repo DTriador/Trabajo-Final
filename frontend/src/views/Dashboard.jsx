@@ -228,8 +228,11 @@ const Dashboard = () => {
 
         /* Sin scroll, más ancho, letras más chicas */
         .postit-proximas {
-          width: 190px;
-          overflow: visible;
+          width: min(220px, 100%);
+          max-width: 220px;
+          max-height: min(44vh, 320px);
+          overflow-y: auto;
+          overflow-x: hidden;
           background: #bbf7d0;
           padding: 15px 12px 12px;
           box-shadow: 8px 8px 25px rgba(0,0,0,0.35);
@@ -237,6 +240,7 @@ const Dashboard = () => {
           transform: rotate(-2deg);
           position: relative;
           font-size: 0.72rem;
+          box-sizing: border-box;
         }
         .postit-proximas * {
           font-size: inherit;

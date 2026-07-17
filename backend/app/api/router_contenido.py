@@ -133,7 +133,11 @@ def _encabezado_documento(doc, tipo_doc: str, nombre_materia: str, tema: str,
 async def generar_planilla(tema: str, id_docente: str):
     try:
         prompt = f"Generá un cronograma de clases para el tema {tema}"
-        datos_json = await RAGOrchestrator.get_context_and_generate(prompt, SYSTEM_PROMPT_XLSX)
+        datos_json = await RAGOrchestrator.get_context_and_generate(
+            prompt,
+            SYSTEM_PROMPT_XLSX,
+            id_docente=id_docente,
+        )
         archivo_binario = FileEngine.create_xlsx(datos_json)
         return await process_and_upload(archivo_binario, f"Plan_{tema}", tema, "xlsx", id_docente, "RAG_XLSX")
     except Exception as e:
@@ -187,12 +191,12 @@ async def generar_apunte(
         if file is not None:
             pdf_content = await file.read()
             datos_json = await RAGOrchestrator.get_context_from_file_and_generate(
-                pdf_content, prompt_base, SYSTEM_PROMPT_APUNTE
+                pdf_content, prompt_base, SYSTEM_PROMPT_APUNTE, id_docente=id_docente
             )
         else:
             ctx = _contexto_biblio(contenido_minimo, bibliografia)
             datos_json = await RAGOrchestrator.get_context_and_generate(
-                f"{prompt_base}\n\n{ctx}", SYSTEM_PROMPT_APUNTE
+                f"{prompt_base}\n\n{ctx}", SYSTEM_PROMPT_APUNTE, id_docente=id_docente
             )
 
         from docx import Document
@@ -287,12 +291,12 @@ async def generar_preguntas(
             if not pdf_content:
                 raise HTTPException(status_code=400, detail="El PDF está vacío.")
             datos_json = await RAGOrchestrator.get_context_from_file_and_generate(
-                pdf_content, prompt_base, SYSTEM_PROMPT_PREGUNTAS
+                pdf_content, prompt_base, SYSTEM_PROMPT_PREGUNTAS, id_docente=id_docente
             )
         else:
             ctx = _contexto_biblio(contenido_minimo, bibliografia)
             datos_json = await RAGOrchestrator.get_context_and_generate(
-                f"{prompt_base}\n\n{ctx}", SYSTEM_PROMPT_PREGUNTAS
+                f"{prompt_base}\n\n{ctx}", SYSTEM_PROMPT_PREGUNTAS, id_docente=id_docente
             )
 
         # Normalización defensiva
@@ -427,14 +431,18 @@ async def generar_examen(
             if not pdf_content:
                 raise HTTPException(status_code=400, detail="El PDF está vacío.")
             datos_json = await RAGOrchestrator.get_context_from_file_and_generate(
-                pdf_content, prompt, SYSTEM_PROMPT_EXAMEN
+                pdf_content, prompt, SYSTEM_PROMPT_EXAMEN, id_docente=id_docente
             )
         else:
             prompt = (
                 f"Generá el examen de '{nombre_materia}' para la fecha {fecha_examen}."
                 + (f"\n\n{biblio_str}" if biblio_str else "")
             )
-            datos_json = await RAGOrchestrator.get_context_and_generate(prompt, SYSTEM_PROMPT_EXAMEN)
+            datos_json = await RAGOrchestrator.get_context_and_generate(
+                prompt,
+                SYSTEM_PROMPT_EXAMEN,
+                id_docente=id_docente,
+            )
 
         if isinstance(datos_json, str):
             m = re.search(r"\{.*\}", datos_json, re.DOTALL)
@@ -531,12 +539,12 @@ async def generar_podcast(
             if not pdf_content:
                 raise HTTPException(status_code=400, detail="El PDF está vacío.")
             datos_json = await RAGOrchestrator.get_context_from_file_and_generate(
-                pdf_content, prompt_base, SYSTEM_PROMPT_PODCAST
+                pdf_content, prompt_base, SYSTEM_PROMPT_PODCAST, id_docente=id_docente
             )
         else:
             ctx = _contexto_biblio(contenido_minimo, bibliografia)
             datos_json = await RAGOrchestrator.get_context_and_generate(
-                f"{prompt_base}\n\n{ctx}", SYSTEM_PROMPT_PODCAST
+                f"{prompt_base}\n\n{ctx}", SYSTEM_PROMPT_PODCAST, id_docente=id_docente
             )
 
         # Normalización defensiva

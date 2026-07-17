@@ -165,7 +165,7 @@ const BibliotecaView = () => {
                                     {cursos.map(c => (
                                         <div key={c.id_curso} onClick={() => seleccionarCurso(c)} className="p-3 border-l-4 border-blue-500 bg-blue-50/50 shadow-sm cursor-pointer hover:bg-blue-100 transition-all">
                                             <p className="font-bold text-lg">{c.nombre_materia}</p>
-                                            <p className="text-sm text-gray-600">División: {c.division} | <span className="text-blue-600 underline">Ver Cronograma</span></p>
+                                            <p className="text-sm text-black">División: {c.division} | <span className="text-blue-600 underline">Ver Cronograma</span></p>
                                         </div>
                                     ))}
                                 </div>
