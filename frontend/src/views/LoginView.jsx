@@ -166,8 +166,8 @@ const LoginView = () => {
                                 <button type="button" className="sticker-btn sticker-green" onClick={() => navigate('/registro')}>Registrarme</button>
                                 <button
                                     type="button"
+                                    className="forgot-password-link"
                                     onClick={() => setMostrarOlvide(true)}
-                                    style={{ background: 'none', border: 'none', color: '#7afcff', textDecoration: 'underline', cursor: 'pointer', marginTop: 10, fontSize: '0.95rem' }}
                                     >
                                     ¿Olvidaste tu contraseña?
                                 </button>

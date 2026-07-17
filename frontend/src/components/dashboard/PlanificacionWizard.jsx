@@ -39,7 +39,7 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
 
   // ── Paso 2: fechas calculadas automáticamente ─────────────────────────────
   const [fechasCalculadas, setFechasCalculadas] = useState([]);  // string[]
-  const [horariosClases, setHorariosClases] = useState([]);
+  const [horariosDias, setHorariosDias] = useState({});
 
   // ── Paso 3: exámenes ──────────────────────────────────────────────────────
   const [examenes, setExamenes] = useState([]);
@@ -139,7 +139,10 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
     const maxPosicion = Math.max(...posicionesOcupadas, total);
     const fechasClases = fechasCalculadas.slice(0, maxPosicion + 5);
 
-    const horarioPorPosicion = (pos) => horariosClases[pos - 1] || {};
+    const obtenerHorarioPorFecha = (fecha) => {
+      const dow = new Date(`${fecha}T12:00:00`).getDay();
+      return horariosDias[dow] || { hora_inicio: '08:00', hora_fin: '09:00' };
+    };
 
     // ── Marcar recuperatorios por POSICIÓN (más robusto que por fecha) ─────
     // recupPorExamen: Map<numeroExamen, {desde, hasta}>
@@ -204,7 +207,7 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
          const esRecup = numExRecup !== null;
 
         if (esExamen) {
-          const horario = horarioPorPosicion(pos);
+          const horario = obtenerHorarioPorFecha(fecha);
           const ex = examenes[numEx - 1];
           resultado.push({
             numero: pos, fecha, tipo: 'examen', numExamen: numEx, unidad: null,
@@ -213,7 +216,7 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
             tema: `Examen ${numEx}${ex?.clasesExamen ? ` — ${ex.clasesExamen}` : ''}`,
           });
         } else if (esRecup) {
-          const horario = horarioPorPosicion(pos);
+          const horario = obtenerHorarioPorFecha(fecha);
           resultado.push({
             numero: pos, fecha, tipo: 'recuperatorio', numExamen: numExRecup, unidad: null,
             hora_inicio: horario.hora_inicio || '08:00',
@@ -221,7 +224,7 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
             tema: `Recuperatorio Examen ${numExRecup}`,
           });
         } else {
-          const horario = horarioPorPosicion(pos);
+          const horario = obtenerHorarioPorFecha(fecha);
           numClaseReal++;
           const claseIA = clasesIA[iaIdx] || {};
           resultado.push({
@@ -255,19 +258,19 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
         const esRecup  = numExRecup !== null;
 
         if (esExamen) {
-          const horario = horarioPorPosicion(pos);
+          const horario = obtenerHorarioPorFecha(fecha);
           resultado.push({ numero: pos, fecha, tipo: 'examen', numExamen: numEx, unidad: null,
             hora_inicio: horario.hora_inicio || '08:00',
             hora_fin: horario.hora_fin || '09:00',
             tema: `Examen ${numEx}` });
         } else if (esRecup) {
-          const horario = horarioPorPosicion(pos);
+          const horario = obtenerHorarioPorFecha(fecha);
           resultado.push({ numero: pos, fecha, tipo: 'recuperatorio', numExamen: numExRecup, unidad: null,
             hora_inicio: horario.hora_inicio || '08:00',
             hora_fin: horario.hora_fin || '09:00',
             tema: `Recuperatorio Examen ${numExRecup}` });
         } else {
-          const horario = horarioPorPosicion(pos);
+          const horario = obtenerHorarioPorFecha(fecha);
           const idxU = Math.floor((iaIdx / Math.max(fechasSoloClases.length, 1)) * totalUnidades);
           const u    = datosMateria.unidades[Math.min(idxU, totalUnidades - 1)];
           resultado.push({ numero: pos, fecha, tipo: 'clase', unidad: u?.numero || 1, numExamen: null,
@@ -428,8 +431,8 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
             totalClases={parseInt(datosMateria.cant_clases) || 0}
             fechasCalculadas={fechasCalculadas}
             setFechasCalculadas={setFechasCalculadas}
-            horariosClases={horariosClases}
-            setHorariosClases={setHorariosClases}
+            horariosDias={horariosDias}
+            setHorariosDias={setHorariosDias}
           />
         )}
         {paso === 2 && (
