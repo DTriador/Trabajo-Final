@@ -123,6 +123,53 @@ def _cargar_feriados(id_docente: str) -> list:
         return []
 
 
+def _generar_docx_planificacion(plan: dict, clases: list) -> bytes:
+    """
+    Construye el .docx de una planificación (título + datos generales + cronograma).
+    Reutilizado tanto por el endpoint de descarga bajo demanda (/exportar-word)
+    como por el guardado automático en Mis Materiales al crear la planificación
+    desde el wizard.
+    """
+    doc = Document()
+    # Título
+    titulo = doc.add_heading(plan.get("nombre_clase", "Planificación"), 0)
+    titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # Datos generales
+    doc.add_heading("Datos generales", level=1)
+    tabla_meta = doc.add_table(rows=3, cols=2)
+    tabla_meta.style = "Table Grid"
+    meta = [
+        ("Contenido mínimo",  plan.get("contenido_minimo", "—")),
+        ("Duración de clase", plan.get("duracion", "—")),
+        ("Total de clases",   str(len([c for c in clases if c.get("tipo") == "clase"]))),
+    ]
+    for i, (k, v) in enumerate(meta):
+        tabla_meta.rows[i].cells[0].text = k
+        tabla_meta.rows[i].cells[0].paragraphs[0].runs[0].bold = True
+        tabla_meta.rows[i].cells[1].text = v or "—"
+    doc.add_paragraph()
+    # Cronograma
+    doc.add_heading("Cronograma", level=1)
+    tabla = doc.add_table(rows=1, cols=4)
+    tabla.style = "Table Grid"
+    for i, enc in enumerate(["N°", "Fecha", "Tipo", "Tema"]):
+        cell = tabla.rows[0].cells[i]
+        cell.text = enc
+        cell.paragraphs[0].runs[0].bold = True
+    tipo_labels = {"clase": "Clase", "examen": "Examen", "recuperatorio": "Recuperatorio"}
+    for c in clases:
+        row = tabla.add_row()
+        row.cells[0].text = str(c.get("numero", ""))
+        row.cells[1].text = c.get("fecha_programada", "")
+        row.cells[2].text = tipo_labels.get(c.get("tipo", "clase"), c.get("tipo", ""))
+        row.cells[3].text = c.get("tema_clase", "")
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 # IMPORTANTE: /planificacion/wizard debe ir ANTES de /planificacion/{id}/...
@@ -132,7 +179,9 @@ def _cargar_feriados(id_docente: str) -> list:
 async def crear_planificacion_wizard(payload: PlanificacionWizardPayload):
     """
     Recibe la planificación completa desde el wizard.
-    Persiste en `planificacion` + `cronograma_clases` + `examenes_planificacion`.
+    Persiste en `planificacion` + `cronograma_clases` + `examenes_planificacion`
+    y guarda automáticamente el .docx en Mis Materiales (archivos_generados),
+    igual que hacen crucigrama/sopa de letras/unir con flechas.
     """
     try:
         curso_res = (
@@ -164,7 +213,8 @@ async def crear_planificacion_wizard(payload: PlanificacionWizardPayload):
         if not plan_res.data:
             raise HTTPException(status_code=500, detail="No se pudo crear la planificación")
 
-        id_plan = plan_res.data[0].get("id_planificacion") or plan_res.data[0].get("id")
+        plan_creada = plan_res.data[0]
+        id_plan = plan_creada.get("id_planificacion") or plan_creada.get("id")
 
         # Clases individuales en cronograma_clases
         if payload.clases:
@@ -197,10 +247,39 @@ async def crear_planificacion_wizard(payload: PlanificacionWizardPayload):
             except Exception as e:
                 print(f"⚠️ examenes_planificacion: {e}")
 
+        # ── Guardar el .docx en Mis Materiales ──────────────────────────────
+        # No debe bloquear la creación de la planificación si falla: se avisa
+        # con "material_guardado": False y un detalle, pero la planificación
+        # ya quedó creada y visible en el Calendario.
+        material_guardado = False
+        material_error = None
+        try:
+            clases_guardadas_res = (
+                supabase.table("cronograma_clases")
+                .select("*")
+                .eq("id_planificacion", id_plan)
+                .order("numero", desc=False)
+                .execute()
+            )
+            clases_guardadas = clases_guardadas_res.data or []
+
+            docx_bytes = _generar_docx_planificacion(plan_creada, clases_guardadas)
+            nombre_base = f"Planificacion_{payload.nombre_clase or payload.tema}"
+
+            await process_and_upload(
+                docx_bytes, nombre_base, payload.tema, "docx", payload.id_docente, "PLANIFICACION",
+            )
+            material_guardado = True
+        except Exception as e:
+            material_error = str(e)
+            print(f"⚠️ No se pudo guardar la planificación en Mis Materiales: {e}")
+
         return {
             "ok": True,
             "id_planificacion": id_plan,
             "clases_creadas": len(payload.clases),
+            "material_guardado": material_guardado,
+            "material_error": material_error,
         }
 
     except HTTPException:
@@ -622,82 +701,17 @@ Distribuí los temas de todas las unidades entre estas {payload.total_clases} cl
         print(f"❌ ERROR distribuir_temas: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/planificacion/{id_plan}/exportar-word")
-async def exportar_planificacion_word(id_plan: str):
-    try:
-        # Obtener datos de la planificación
-        plan = _obtener_planificacion_por_id(id_plan)
-        if not plan:
-            raise HTTPException(status_code=404, detail="Planificación no encontrada")
-        clases_res = supabase.table("cronograma_clases") \
-            .select("*") \
-            .eq("id_planificacion", id_plan) \
-            .order("numero") \
-            .execute()
-        clases = clases_res.data or []
-        # Construir el documento Word
-        doc = Document()
-        # Título
-        titulo = doc.add_heading(plan.get("nombre_clase", "Planificación"), 0)
-        titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        # Datos generales
-        doc.add_heading("Datos generales", level=1)
-        tabla_meta = doc.add_table(rows=4, cols=2)
-        tabla_meta.style = "Table Grid"
-        celdas = [
-            ("Docente",          plan.get("id_docente", "—")),
-            ("Contenido mínimo", plan.get("contenido_minimo", "—")),
-            ("Duración",         plan.get("duracion", "—")),
-            ("Total de clases",  str(len([c for c in clases if c.get("tipo") == "clase"]))),
-        ]
-        for i, (k, v) in enumerate(celdas):
-            tabla_meta.rows[i].cells[0].text = k
-            tabla_meta.rows[i].cells[1].text = v
-        doc.add_paragraph()
-        # Cronograma
-        doc.add_heading("Cronograma de clases", level=1)
-        tabla = doc.add_table(rows=1, cols=4)
-        tabla.style = "Table Grid"
-        encabezados = ["N°", "Fecha", "Tipo", "Tema"]
-        for i, enc in enumerate(encabezados):
-            cell = tabla.rows[0].cells[i]
-            cell.text = enc
-            run = cell.paragraphs[0].runs[0]
-            run.bold = True
-        tipo_labels = {"clase": "Clase", "examen": "Examen", "recuperatorio": "Recuperatorio"}
-        for c in clases:
-            row = tabla.add_row()
-            row.cells[0].text = str(c.get("numero", ""))
-            row.cells[1].text = c.get("fecha_programada", "")
-            row.cells[2].text = tipo_labels.get(c.get("tipo", "clase"), c.get("tipo", ""))
-            row.cells[3].text = c.get("tema_clase", "")
-        # Guardar en buffer
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        nombre_archivo = f"Planificacion_{plan.get('nombre_clase', id_plan).replace(' ', '_')}.docx"
-        return StreamingResponse(
-            buffer,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f"attachment; filename={nombre_archivo}"},
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ ERROR exportar word: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # ── Listar planificaciones del docente ────────────────────────────────────────
 @router.get("/planificacion/lista/{id_docente}")
 async def listar_planificaciones(id_docente: str):
     try:
         res = supabase.table("planificacion") \
-            .select("id, nombre_clase, duracion, contenido_minimo, created_at") \
+            .select("id:id_planificacion, nombre_clase, duracion, contenido_minimo, created_at") \
             .eq("id_docente", id_docente) \
             .order("created_at", desc=True) \
             .execute()
         plans = res.data or []
-        # Agregar total_clases de cronograma_clases
         for p in plans:
             try:
                 clases_res = supabase.table("cronograma_clases") \
@@ -711,6 +725,8 @@ async def listar_planificaciones(id_docente: str):
     except Exception as e:
         print(f"❌ ERROR listar planificaciones: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Exportar planificación a Word (.docx) ─────────────────────────────────────
 @router.get("/planificacion/{id_plan}/exportar-word")
 async def exportar_planificacion_word(id_plan: str):
@@ -721,45 +737,12 @@ async def exportar_planificacion_word(id_plan: str):
         clases_res = supabase.table("cronograma_clases") \
             .select("*").eq("id_planificacion", id_plan).order("numero").execute()
         clases = clases_res.data or []
-        doc = Document()
-        # Título
-        titulo = doc.add_heading(plan.get("nombre_clase", "Planificación"), 0)
-        titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        # Datos generales
-        doc.add_heading("Datos generales", level=1)
-        tabla_meta = doc.add_table(rows=3, cols=2)
-        tabla_meta.style = "Table Grid"
-        meta = [
-            ("Contenido mínimo", plan.get("contenido_minimo", "—")),
-            ("Duración de clase",  plan.get("duracion", "—")),
-            ("Total de clases",    str(len([c for c in clases if c.get("tipo") == "clase"]))),
-        ]
-        for i, (k, v) in enumerate(meta):
-            tabla_meta.rows[i].cells[0].text = k
-            tabla_meta.rows[i].cells[0].paragraphs[0].runs[0].bold = True
-            tabla_meta.rows[i].cells[1].text = v or "—"
-        doc.add_paragraph()
-        # Cronograma
-        doc.add_heading("Cronograma", level=1)
-        tabla = doc.add_table(rows=1, cols=4)
-        tabla.style = "Table Grid"
-        for i, enc in enumerate(["N°", "Fecha", "Tipo", "Tema"]):
-            cell = tabla.rows[0].cells[i]
-            cell.text = enc
-            cell.paragraphs[0].runs[0].bold = True
-        tipo_labels = {"clase": "Clase", "examen": "Examen", "recuperatorio": "Recuperatorio"}
-        for c in clases:
-            row = tabla.add_row()
-            row.cells[0].text = str(c.get("numero", ""))
-            row.cells[1].text = c.get("fecha_programada", "")
-            row.cells[2].text = tipo_labels.get(c.get("tipo", "clase"), c.get("tipo", ""))
-            row.cells[3].text = c.get("tema_clase", "")
-        buf = io.BytesIO()
-        doc.save(buf)
-        buf.seek(0)
+
+        docx_bytes = _generar_docx_planificacion(plan, clases)
+
         nombre = f"Planificacion_{plan.get('nombre_clase', id_plan).replace(' ', '_')}.docx"
         return StreamingResponse(
-            buf,
+            io.BytesIO(docx_bytes),
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             headers={"Content-Disposition": f"attachment; filename={nombre}"},
         )
@@ -768,6 +751,8 @@ async def exportar_planificacion_word(id_plan: str):
     except Exception as e:
         print(f"❌ ERROR exportar word: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Exportar planificación a PDF ──────────────────────────────────────────────
 @router.get("/planificacion/{id_plan}/exportar-pdf")
 async def exportar_planificacion_pdf(id_plan: str):

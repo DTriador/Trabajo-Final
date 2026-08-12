@@ -200,8 +200,16 @@ class PlanningService:
                 }).eq('id_clase', clases[i].id_clase).execute()
 
         return {"message": "Clase reprogramada exitosamente"}
+
+    def export_to_word(self, plan_data, bibliografia):
         """
         Exporta la planificación a Word.
+
+        NOTA: antes este código estaba pegado (sin `def`) dentro de
+        `reprogramar_clase`, después de su `return` — código muerto que
+        nunca se ejecutaba, y por eso `PlanningService` no tenía en
+        realidad el método `export_to_word` que el router intenta llamar.
+        Se lo separó como método propio, sin cambiar la lógica interna.
         """
         from docx import Document
         from docx.shared import Inches

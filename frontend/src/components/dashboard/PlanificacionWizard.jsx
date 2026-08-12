@@ -350,29 +350,6 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
           }
         }
 
-        // Guardar también la planificación generada como archivo en Mis Materiales
-        if (idPlan) {
-          try {
-            const exportRes = await api.get(`/generar/planificacion/${idPlan}/exportar-word`, {
-              responseType: 'blob',
-            });
-            const archivoPlan = new File(
-              [exportRes.data],
-              `${nombreArchivoBase}.docx`,
-              { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
-            );
-            const fdPlan = new FormData();
-            fdPlan.append('files', archivoPlan);
-            fdPlan.append('id_docente', userId);
-            await api.post('/documentos/subir', fdPlan, {
-              headers: { 'Content-Type': undefined },
-            });
-          } catch (planFileErr) {
-            console.warn('Archivo de planificación no subido:', planFileErr);
-            advertencias.push('el archivo de la planificación no se pudo guardar en Mis Materiales');
-          }
-        }
-
         if (advertencias.length > 0) {
           alert(`✅ ¡Planificación guardada! Ya podés verla en el Calendario.\n⚠️ ${advertencias.join(' y ')}.`);
         } else {
