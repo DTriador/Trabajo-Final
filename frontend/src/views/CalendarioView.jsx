@@ -71,7 +71,7 @@ export default function CalendarioView({ onVolver }) {
   const [modalDetalle,   setModalDetalle]   = useState(null);   // detalle evento recurrente
   const [modalExcepcion, setModalExcepcion] = useState(null);
   const [modalDia,       setModalDia]       = useState(null);   // ← NUEVO: detalle del día
-
+  const [modalClase,     setModalClase]     = useState(null);   // ← NUEVO: detalle de una clase puntual
   const [planSeleccionada, setPlanSeleccionada] = useState(null);
 
   const [formEvento,  setFormEvento]  = useState(FORM_EVENTO_VACIO);

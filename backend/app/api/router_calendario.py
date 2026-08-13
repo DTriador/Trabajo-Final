@@ -2,9 +2,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import date, time, timedelta
 from app.core.database import supabase
-
+from datetime import date, time, timedelta, datetime
 router = APIRouter()
 
 # ── Modelos ───────────────────────────────────────────────────────────────────
