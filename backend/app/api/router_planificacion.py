@@ -7,167 +7,26 @@ from app.services.ai_service import SYSTEM_PROMPT_XLSX
 from app.utils.engines import FileEngine
 from app.api.generacion_utils import process_and_upload
 from app.services.email_service import enviar_email
-from pydantic import BaseModel
 from datetime import datetime, timedelta, date
-from pydantic import BaseModel
-from typing import List, Optional
-from docx import Document
-from docx.shared import Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 from fastapi.responses import StreamingResponse
-import io
-from docx import Document
-from docx.shared import Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib import colors
-from fastapi.responses import StreamingResponse
+
+# ── Modelos, helpers y generadores extraídos a sus propios módulos ─────────
+from app.api.planificacion_schemas import (
+    ClaseWizard, ExamenWizard, FeriadoWizard, PlanificacionWizardPayload,
+    ReplanificarClaseRequest, EstadoClaseRequest,
+    UnidadInput, DistribuirPayload, ClaseDistribuida,
+)
+from app.api.planificacion_helpers import (
+    DIAS_ES, _es_feriado, _siguiente_habil,
+    _obtener_planificacion_por_id, _cargar_feriados, _formatear_fecha_clase,
+)
+from app.api.planificacion_generadores import (
+    _generar_docx_planificacion, _generar_pdf_planificacion,
+)
 
 
 router = APIRouter()
-
-
-# ── Modelos Pydantic ──────────────────────────────────────────────────────────
-
-class ClaseWizard(BaseModel):
-    numero: int
-    fecha_programada: str       # "YYYY-MM-DD"
-    tema_clase: str
-    tipo: str                   # "clase" | "examen" | "recuperatorio"
-    estado_clase: str = "programada"
-
-class ExamenWizard(BaseModel):
-    numero: int
-    clases_examen: str          # "1, 2, 3"
-    tiene_recuperatorio: bool = False
-    clases_recup_desde: Optional[int] = None
-    clases_recup_hasta: Optional[int] = None
-
-class FeriadoWizard(BaseModel):
-    fecha: str
-    nombre: str
-
-class PlanificacionWizardPayload(BaseModel):
-    id_docente: str
-    id_curso: str
-    nombre_clase: str
-    tema: str
-    duracion: Optional[str] = None
-    contenido_minimo: Optional[str] = None
-    clases: List[ClaseWizard]
-    examenes: Optional[List[ExamenWizard]] = []
-    feriados_excluidos: Optional[List[FeriadoWizard]] = []
-
-class ReplanificarClaseRequest(BaseModel):
-    nueva_fecha: str            # "YYYY-MM-DD"
-    motivo: str = ""
-    desplazar_siguientes: bool = True  # ← clave: arrastra las clases posteriores
-
-class EstadoClaseRequest(BaseModel):
-    estado: str  # "programada" | "dictada" | "cancelada" | "reprogramada"
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _es_feriado(fecha_iso: str, feriados: list) -> bool:
-    """Devuelve True si la fecha cae en algún feriado."""
-    try:
-        dt = date.fromisoformat(fecha_iso)
-        for f in feriados:
-            inicio = date.fromisoformat(f["fecha_inicio"][:10])
-            fin    = date.fromisoformat(f["fecha_fin"][:10])
-            if inicio <= dt <= fin:
-                return True
-    except Exception:
-        pass
-    return False
-
-
-def _siguiente_habil(fecha_iso: str, feriados: list, dias_max: int = 60) -> str:
-    """
-    Dado un YYYY-MM-DD, avanza de a 1 día hasta encontrar
-    una fecha que no sea feriado ni fin de semana (sáb/dom).
-    Devuelve la fecha hábil como string.
-    """
-    dt = date.fromisoformat(fecha_iso)
-    for _ in range(dias_max):
-        dt += timedelta(days=1)
-        iso = dt.isoformat()
-        if dt.weekday() < 5 and not _es_feriado(iso, feriados):
-            return iso
-    return fecha_iso  # fallback: misma fecha si no encontró
-
-
-def _obtener_planificacion_por_id(id_plan: str):
-    """Busca la planificación por id_planificacion o por id, por compatibilidad con distintos esquemas."""
-    for column in ("id_planificacion", "id"):
-        try:
-            res = supabase.table("planificacion").select("*").eq(column, id_plan).single().execute()
-            data = getattr(res, "data", None)
-            if data:
-                return data
-        except Exception:
-            continue
-    return None
-
-
-def _cargar_feriados(id_docente: str) -> list:
-    """Carga feriados nacionales + propios del docente."""
-    try:
-        nacionales = supabase.table("feriados").select("*").is_("id_docente", "null").execute().data or []
-        propios    = supabase.table("feriados").select("*").eq("id_docente", id_docente).execute().data or []
-        return nacionales + propios
-    except Exception:
-        return []
-
-
-def _generar_docx_planificacion(plan: dict, clases: list) -> bytes:
-    """
-    Construye el .docx de una planificación (título + datos generales + cronograma).
-    Reutilizado tanto por el endpoint de descarga bajo demanda (/exportar-word)
-    como por el guardado automático en Mis Materiales al crear la planificación
-    desde el wizard.
-    """
-    doc = Document()
-    # Título
-    titulo = doc.add_heading(plan.get("nombre_clase", "Planificación"), 0)
-    titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    # Datos generales
-    doc.add_heading("Datos generales", level=1)
-    tabla_meta = doc.add_table(rows=3, cols=2)
-    tabla_meta.style = "Table Grid"
-    meta = [
-        ("Contenido mínimo",  plan.get("contenido_minimo", "—")),
-        ("Duración de clase", plan.get("duracion", "—")),
-        ("Total de clases",   str(len([c for c in clases if c.get("tipo") == "clase"]))),
-    ]
-    for i, (k, v) in enumerate(meta):
-        tabla_meta.rows[i].cells[0].text = k
-        tabla_meta.rows[i].cells[0].paragraphs[0].runs[0].bold = True
-        tabla_meta.rows[i].cells[1].text = v or "—"
-    doc.add_paragraph()
-    # Cronograma
-    doc.add_heading("Cronograma", level=1)
-    tabla = doc.add_table(rows=1, cols=4)
-    tabla.style = "Table Grid"
-    for i, enc in enumerate(["N°", "Fecha", "Tipo", "Tema"]):
-        cell = tabla.rows[0].cells[i]
-        cell.text = enc
-        cell.paragraphs[0].runs[0].bold = True
-    tipo_labels = {"clase": "Clase", "examen": "Examen", "recuperatorio": "Recuperatorio"}
-    for c in clases:
-        row = tabla.add_row()
-        row.cells[0].text = str(c.get("numero", ""))
-        row.cells[1].text = c.get("fecha_programada", "")
-        row.cells[2].text = tipo_labels.get(c.get("tipo", "clase"), c.get("tipo", ""))
-        row.cells[3].text = c.get("tema_clase", "")
-
-    buf = io.BytesIO()
-    doc.save(buf)
-    buf.seek(0)
-    return buf.getvalue()
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -571,6 +430,7 @@ async def eliminar_recordatorio(id_recordatorio: str):
     supabase.table("recordatorios_clase").delete().eq("id_recordatorio", id_recordatorio).execute()
     return {"status": "ok"}
 
+
 @router.put("/planificacion/clase/{id_clase}/estado")
 async def actualizar_estado_clase(id_clase: str, body: EstadoClaseRequest):
     """Actualiza el estado de una clase individual (dictada, cancelada, etc.)."""
@@ -590,30 +450,8 @@ async def actualizar_estado_clase(id_clase: str, body: EstadoClaseRequest):
     except Exception as e:
         print(f"❌ ERROR estado clase: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
-class UnidadInput(BaseModel):
-    numero: int
-    nombre: str
-    contenido: str                  # contenido mínimo de la unidad
-    bibliografia_especifica: str = ""
- 
-class DistribuirPayload(BaseModel):
-    id_docente: str
-    nombre_asignatura: str
-    contenido_minimo_general: str
-    bibliografia_general: str = ""
-    unidades: List[UnidadInput]
-    total_clases: int               # cantidad total de clases de la asignatura
-    fechas: List[str]               # lista de fechas "YYYY-MM-DD" ya calculadas
- 
- 
-class ClaseDistribuida(BaseModel):
-    numero: int
-    fecha: str
-    unidad: int
-    tema: str
- 
- 
+
+
 @router.post("/planificacion/distribuir")
 async def distribuir_temas(payload: DistribuirPayload):
     """
@@ -628,11 +466,11 @@ async def distribuir_temas(payload: DistribuirPayload):
             unidades_txt += f"Contenido mínimo:\n{u.contenido}\n"
             if u.bibliografia_especifica:
                 unidades_txt += f"Bibliografía específica:\n{u.bibliografia_especifica}\n"
- 
+
         fechas_txt = "\n".join(
             [f"Clase {i+1}: {f}" for i, f in enumerate(payload.fechas[:payload.total_clases])]
         )
- 
+
         system_prompt = """
 Sos un experto en planificación pedagógica universitaria.
 Tu tarea es distribuir los contenidos de una asignatura entre sus clases.
@@ -657,44 +495,44 @@ Reglas:
 - No inventés temas que no estén en el contenido mínimo.
 - Respetá el número y fecha de cada clase tal como se indica.
 """
- 
+
         user_prompt = f"""
 Asignatura: {payload.nombre_asignatura}
- 
+
 Contenido mínimo general:
 {payload.contenido_minimo_general}
- 
+
 Bibliografía general:
 {payload.bibliografia_general or "No especificada"}
- 
+
 Unidades:
 {unidades_txt}
- 
+
 Clases disponibles ({payload.total_clases} en total):
 {fechas_txt}
- 
+
 Distribuí los temas de todas las unidades entre estas {payload.total_clases} clases.
 """
- 
+
         # ── Llamar a Groq ─────────────────────────────────────────────────────
         from app.services.rag_orchestrator import RAGOrchestrator
         import json, re
- 
+
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         raw = RAGOrchestrator._generate(full_prompt)
- 
+
         # Parsear JSON
         match = re.search(r'\{.*\}', raw, re.DOTALL)
         if not match:
             raise HTTPException(500, "La IA no devolvió un JSON válido")
         data = json.loads(match.group(0))
- 
+
         clases = data.get("clases", [])
         if not clases:
             raise HTTPException(500, "La IA no generó clases")
- 
+
         return {"ok": True, "clases": clases}
- 
+
     except HTTPException:
         raise
     except Exception as e:
@@ -712,6 +550,7 @@ async def listar_planificaciones(id_docente: str):
             .order("created_at", desc=True) \
             .execute()
         plans = res.data or []
+        # Agregar total_clases de cronograma_clases
         for p in plans:
             try:
                 clases_res = supabase.table("cronograma_clases") \
@@ -763,63 +602,12 @@ async def exportar_planificacion_pdf(id_plan: str):
         clases_res = supabase.table("cronograma_clases") \
             .select("*").eq("id_planificacion", id_plan).order("numero").execute()
         clases = clases_res.data or []
-        buf = io.BytesIO()
-        doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=40, leftMargin=40, topMargin=50, bottomMargin=40)
-        styles = getSampleStyleSheet()
-        elementos = []
-        # Título
-        elementos.append(Paragraph(plan.get("nombre_clase", "Planificación"), styles["Title"]))
-        elementos.append(Spacer(1, 12))
-        # Datos generales
-        elementos.append(Paragraph("Datos generales", styles["Heading2"]))
-        meta_data = [
-            ["Contenido mínimo", plan.get("contenido_minimo", "—") or "—"],
-            ["Duración de clase",  plan.get("duracion", "—") or "—"],
-            ["Total de clases",    str(len([c for c in clases if c.get("tipo") == "clase"]))],
-        ]
-        t_meta = Table(meta_data, colWidths=[140, 360])
-        t_meta.setStyle(TableStyle([
-            ("BACKGROUND",  (0, 0), (0, -1), colors.HexColor("#e0f2fe")),
-            ("FONTNAME",    (0, 0), (0, -1), "Helvetica-Bold"),
-            ("GRID",        (0, 0), (-1, -1), 0.5, colors.grey),
-            ("FONTSIZE",    (0, 0), (-1, -1), 9),
-            ("VALIGN",      (0, 0), (-1, -1), "TOP"),
-            ("PADDING",     (0, 0), (-1, -1), 6),
-        ]))
-        elementos.append(t_meta)
-        elementos.append(Spacer(1, 16))
-        # Cronograma
-        elementos.append(Paragraph("Cronograma de clases", styles["Heading2"]))
-        tipo_labels = {"clase": "Clase", "examen": "Examen", "recuperatorio": "Recuperatorio"}
-        tipo_colores = {"clase": "#dbeafe", "examen": "#fef3c7", "recuperatorio": "#dcfce7"}
-        tabla_data = [["N°", "Fecha", "Tipo", "Tema"]]
-        for c in clases:
-            tabla_data.append([
-                str(c.get("numero", "")),
-                c.get("fecha_programada", ""),
-                tipo_labels.get(c.get("tipo", ""), c.get("tipo", "")),
-                Paragraph(c.get("tema_clase", ""), styles["Normal"]),
-            ])
-        t = Table(tabla_data, colWidths=[25, 75, 80, 320])
-        style_cmds = [
-            ("BACKGROUND",  (0, 0), (-1, 0),  colors.HexColor("#1e3a8a")),
-            ("TEXTCOLOR",   (0, 0), (-1, 0),  colors.white),
-            ("FONTNAME",    (0, 0), (-1, 0),  "Helvetica-Bold"),
-            ("FONTSIZE",    (0, 0), (-1, -1), 8),
-            ("GRID",        (0, 0), (-1, -1), 0.4, colors.grey),
-            ("VALIGN",      (0, 0), (-1, -1), "MIDDLE"),
-            ("PADDING",     (0, 0), (-1, -1), 5),
-        ]
-        for i, c in enumerate(clases, start=1):
-            bg = tipo_colores.get(c.get("tipo", "clase"), "#ffffff")
-            style_cmds.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor(bg)))
-        t.setStyle(TableStyle(style_cmds))
-        elementos.append(t)
-        doc.build(elementos)
-        buf.seek(0)
+
+        pdf_bytes = _generar_pdf_planificacion(plan, clases)
+
         nombre = f"Planificacion_{plan.get('nombre_clase', id_plan).replace(' ', '_')}.pdf"
         return StreamingResponse(
-            buf,
+            io.BytesIO(pdf_bytes),
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={nombre}"},
         )
