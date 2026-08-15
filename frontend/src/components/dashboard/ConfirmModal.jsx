@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import './ConfirmModal.css';
 
 const ConfirmModal = ({
@@ -11,6 +11,13 @@ const ConfirmModal = ({
     onConfirm,
     onCancel,
 }) => {
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        if (open) document.body.classList.add('modal-open');
+        else document.body.classList.remove('modal-open');
+        return () => document.body.classList.remove('modal-open');
+    }, [open]);
+
     if (!open) return null;
 
     return (
