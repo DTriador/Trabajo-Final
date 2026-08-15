@@ -2,8 +2,9 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
-from app.core.database import supabase
 from datetime import date, time, timedelta, datetime
+from app.core.database import supabase
+
 router = APIRouter()
 
 # ── Modelos ───────────────────────────────────────────────────────────────────
@@ -37,6 +38,26 @@ class FeriadoCreate(BaseModel):
     fecha_inicio: str
     fecha_fin: str
     tipo: str = "feriado"   # 'feriado' | 'vacaciones' | 'otro'
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _calcular_horario(fecha_programada: str, duracion_str: str):
+    """
+    A partir de 'fecha_programada' (que trae hora embebida, ej. '2026-03-11T14:00:00')
+    y la duración de la clase en minutos (ej. '45'), calcula hora_inicio y hora_fin
+    como strings 'HH:MM'. Si no hay hora o la duración no es un número, devuelve ('', '').
+    """
+    try:
+        dt = datetime.fromisoformat((fecha_programada or "")[:19])
+        try:
+            minutos = int(duracion_str)
+        except (TypeError, ValueError):
+            minutos = 60  # fallback razonable si no hay duración cargada
+        hora_inicio = dt.strftime("%H:%M")
+        hora_fin    = (dt + timedelta(minutes=minutos)).strftime("%H:%M")
+        return hora_inicio, hora_fin
+    except Exception:
+        return "", ""
 
 # ── Eventos recurrentes ───────────────────────────────────────────────────────
 
@@ -169,7 +190,8 @@ async def eliminar_feriado(id_feriado: str):
 async def get_mes_completo(id_docente: str, anio: int, mes: int):
     """
     Devuelve todos los eventos expandidos del mes:
-    recurrentes + planificaciones + feriados.
+    recurrentes + planificaciones + feriados + cronograma de clases
+    (este último ya enriquecido con materia, escuela y horario calculado).
     """
     try:
         from calendar import monthrange
@@ -260,14 +282,44 @@ async def get_mes_completo(id_docente: str, anio: int, mes: int):
             for f in (fer_result.data or [])
         ]
 
+        # 5) Cronograma de clases del mes, enriquecido con materia/escuela/horario
         all_plans_res = supabase.table("planificacion") \
-            .select("id_planificacion, nombre_clase") \
+            .select("id_planificacion, nombre_clase, id_curso, id_escuela, duracion") \
             .eq("id_docente", id_docente) \
             .execute()
         all_plans = {
-            p["id_planificacion"]: p["nombre_clase"]
+            p["id_planificacion"]: p
             for p in (all_plans_res.data or [])
         }
+
+        # Traer materia (cursos) y nombre de escuela (escuelas) para las
+        # planificaciones involucradas, para poder mostrarlas en el detalle
+        # de cada clase sin tener que guardarlas duplicadas en cronograma_clases.
+        ids_curso   = list({p["id_curso"]   for p in all_plans.values() if p.get("id_curso")})
+        ids_escuela = list({p["id_escuela"] for p in all_plans.values() if p.get("id_escuela")})
+
+        materia_por_curso = {}
+        if ids_curso:
+            cursos_res = supabase.table("cursos") \
+                .select("id_curso, nombre_materia") \
+                .in_("id_curso", ids_curso) \
+                .execute()
+            materia_por_curso = {
+                c["id_curso"]: c.get("nombre_materia", "")
+                for c in (cursos_res.data or [])
+            }
+
+        escuela_por_id = {}
+        if ids_escuela:
+            escuelas_res = supabase.table("escuelas") \
+                .select("id_escuela, nombre_escuela") \
+                .in_("id_escuela", ids_escuela) \
+                .execute()
+            escuela_por_id = {
+                e["id_escuela"]: e.get("nombre_escuela", "")
+                for e in (escuelas_res.data or [])
+            }
+
         cronograma = []
         if all_plans:
             cron_res = supabase.table("cronograma_clases") \
@@ -277,25 +329,32 @@ async def get_mes_completo(id_docente: str, anio: int, mes: int):
                 .lte("fecha_programada", fecha_fin_dt) \
                 .order("fecha_programada", desc=False) \
                 .execute()
-            cronograma = [
-                {
+
+            for c in (cron_res.data or []):
+                plan_info = all_plans.get(c["id_planificacion"], {})
+                hora_inicio, hora_fin = _calcular_horario(
+                    c.get("fecha_programada"), plan_info.get("duracion")
+                )
+                cronograma.append({
                     **c,
-                    "nombre_plan": all_plans.get(c["id_planificacion"], ""),
+                    "nombre_plan":    plan_info.get("nombre_clase", ""),
+                    "materia":        materia_por_curso.get(plan_info.get("id_curso"), ""),
+                    "nombre_escuela": escuela_por_id.get(plan_info.get("id_escuela"), ""),
+                    "hora_inicio":    hora_inicio,
+                    "hora_fin":       hora_fin,
                     "color": (
                         "#f59e0b" if c.get("tipo") == "examen"
                         else "#22c55e" if c.get("tipo") == "recuperatorio"
                         else "#818cf8"
                     ),
-                }
-                for c in (cron_res.data or [])
-            ]
-        # ────────────────────────────────────────────────────────────────────
+                })
+
         return {
             "status":         "success",
             "eventos":        dias_expandidos,
             "planificaciones": planificaciones,
             "feriados":       feriados,
-            "cronograma":     cronograma,    # ← agregar este campo
+            "cronograma":     cronograma,
         }
     except Exception as e:
         print(f"DEBUG ERROR MES: {str(e)}")

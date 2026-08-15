@@ -53,44 +53,74 @@ class RAGOrchestrator:
             return None
 
     # =========================
-    # GENERATION (GROQ)
-    # =========================
-    @staticmethod
-    def _generate(prompt: str, max_chars: int = 28000):
-        # Truncar prompt si es demasiado largo para el límite de tokens de Groq
-        if len(prompt) > max_chars:
-            print(f"⚠️ Prompt truncado de {len(prompt)} a {max_chars} chars")
-            prompt = prompt[:max_chars]
+# GENERATION (GROQ)
+# =========================
+@staticmethod
+def _generate(prompt: str, max_chars: int = 28000):
 
-        modelos_a_probar = [
-            ("llama-3.3-70b-versatile", 3000),
-            ("llama-3.1-8b-instant",    1500),
-        ]
+    # Evitar prompts excesivamente largos
+    if len(prompt) > max_chars:
+        print(
+            f"⚠️ Prompt truncado de "
+            f"{len(prompt)} a {max_chars} caracteres"
+        )
+        prompt = prompt[:max_chars]
 
-        errores = []
+    modelos_a_probar = [
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.6-27b",
+        "llama-3.1-8b-instant",
+    ]
 
-        for modelo, max_tokens_modelo in modelos_a_probar:
-            prompt_modelo = prompt[:max_tokens_modelo * 3]  # ~3 chars por token
-            try:
-                print(f"⏳ Intentando generar con el modelo: {modelo}...")
-                response = groq_client.chat.completions.create(
-                    model=modelo,
-                    messages=[{"role": "user", "content": prompt_modelo}],
-                    max_tokens=2048,
-                )
-                print(f"✅ ¡Éxito con el modelo {modelo}!")
-                return response.choices[0].message.content
-            except Exception as e:
-                error_real = str(e)
-                print(f"⚠️ El modelo {modelo} falló. ERROR: {error_real}")
-                errores.append(error_real)
-                continue
+    errores = []
 
-        print("\n❌ RESUMEN DE ERRORES DE GROQ:")
-        for err in errores:
-            print(f"- {err}")
+    for modelo in modelos_a_probar:
 
-        raise Exception("Groq rechazó la conexión. Revisá la consola para leer el error exacto.")
+        try:
+            print(
+                f"⏳ Intentando generar con el modelo: "
+                f"{modelo}..."
+            )
+
+            response = groq_client.chat.completions.create(
+                model=modelo,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                max_tokens=2048,
+            )
+
+            print(f"✅ ¡Éxito con el modelo {modelo}!")
+
+            return response.choices[0].message.content
+
+        except Exception as e:
+
+            error_real = str(e)
+
+            print(
+                f"⚠️ El modelo {modelo} falló. "
+                f"ERROR: {error_real}"
+            )
+
+            errores.append(
+                f"{modelo}: {error_real}"
+            )
+
+            continue
+
+    print("\n❌ RESUMEN DE ERRORES DE GROQ:")
+
+    for err in errores:
+        print(f"- {err}")
+
+    raise Exception(
+        "No fue posible generar una respuesta con "
+        "ninguno de los modelos configurados en Groq."
+    )
 
     # =========================
     # UTILIDAD: PARSER JSON

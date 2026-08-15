@@ -2,59 +2,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
-import CalendarioDocente from '../components/dashboard/CalendarioDocente';
 
-const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
-               'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const DIAS_CORTO = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
-const DIAS_SEMANA = [
-  { num: 1, label: 'Lun' }, { num: 2, label: 'Mar' },
-  { num: 3, label: 'Mié' }, { num: 4, label: 'Jue' },
-  { num: 5, label: 'Vie' }, { num: 6, label: 'Sáb' },
-  { num: 7, label: 'Dom' },
-];
-const COLORES = ['#f472b6','#818cf8','#34d399','#fb923c','#60a5fa','#a78bfa','#f87171'];
+import ModalDia           from '../components/dashboard/calendario/ModalDia';
+import ModalClase         from '../components/dashboard/calendario/ModalClase';
+import ModalEvento        from '../components/dashboard/calendario/ModalEvento';
+import ModalFeriado       from '../components/dashboard/calendario/ModalFeriado';
+import ModalDetalleEvento from '../components/dashboard/calendario/ModalDetalleEvento';
+import ModalExcepcion     from '../components/dashboard/calendario/ModalExcepcion';
+import ModalCronograma    from '../components/dashboard/calendario/ModalCronograma';
 
-const MESES_LARGO = ['enero','febrero','marzo','abril','mayo','junio',
-                     'julio','agosto','septiembre','octubre','noviembre','diciembre'];
-
-const FORM_EVENTO_VACIO = {
-  titulo: '', materia: '', nombre_escuela: '',
-  hora_inicio: '08:00', hora_fin: '09:00',
-  dias_semana: [], fecha_inicio: '', fecha_fin: '',
-  color: '#f472b6',
-};
-const FORM_FERIADO_VACIO = {
-  nombre: '', fecha_inicio: '', fecha_fin: '', tipo: 'feriado',
-};
-
-const extraerError = (e) => {
-  const detail = e.response?.data?.detail;
-  if (!detail) return e.message || 'Error desconocido';
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail)) {
-    return detail.map(d => `${d.loc?.join('→') || ''}: ${d.msg}`).join('\n');
-  }
-  return JSON.stringify(detail);
-};
-
-const formatFechaLarga = (iso) => {
-  const [y, m, d] = iso.split('-').map(Number);
-  const f = new Date(y, m - 1, d);
-  const diasNombre = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
-  return `${diasNombre[f.getDay()]} ${d} de ${MESES_LARGO[m - 1]} de ${y}`;
-};
-
-const tipoCronogramaEtiqueta = (tipo, numero) => {
-  const etiqueta = tipo === 'examen' ? 'Examen' : tipo === 'recuperatorio' ? 'Recup.' : 'Clase';
-  return `${etiqueta} ${numero}`.trim();
-};
-
-const tipoCronogramaColor = (tipo) => {
-  if (tipo === 'examen') return '#f59e0b';
-  if (tipo === 'recuperatorio') return '#22c55e';
-  return '#818cf8';
-};
+import {
+  MESES, DIAS_CORTO, FORM_EVENTO_VACIO, FORM_FERIADO_VACIO,
+  extraerError, tipoCronogramaEtiqueta, tipoCronogramaColor,
+  btnNavStyle, btnAccionStyle, chipStyle,
+} from '../components/dashboard/calendario/calendarioHelpers';
 
 export default function CalendarioView({ onVolver }) {
   const { user } = useAuth();
@@ -70,8 +31,9 @@ export default function CalendarioView({ onVolver }) {
   const [modalFeriado,   setModalFeriado]   = useState(false);
   const [modalDetalle,   setModalDetalle]   = useState(null);   // detalle evento recurrente
   const [modalExcepcion, setModalExcepcion] = useState(null);
-  const [modalDia,       setModalDia]       = useState(null);   // ← NUEVO: detalle del día
-  const [modalClase,     setModalClase]     = useState(null);   // ← NUEVO: detalle de una clase puntual
+  const [modalDia,       setModalDia]       = useState(null);   // detalle del día
+  const [modalClase,     setModalClase]     = useState(null);   // detalle de una clase puntual
+
   const [planSeleccionada, setPlanSeleccionada] = useState(null);
 
   const [formEvento,  setFormEvento]  = useState(FORM_EVENTO_VACIO);
@@ -326,13 +288,13 @@ export default function CalendarioView({ onVolver }) {
             const iso          = toISO(d);
             const esOtroMes    = d.getMonth() !== mesActual;
             const esHoy        = iso === toISO(new Date());
-            const { evs, plans, fers, cronograma } = eventosDelDia(iso);
+            const { evs, plans, fers, cronograma: cronoDia } = eventosDelDia(iso);
             const tieneFeriado = fers.length > 0;
 
             return (
               <div
                 key={i}
-                onClick={() => abrirModalDia(iso, { evs, plans, fers, cronograma })}
+                onClick={() => abrirModalDia(iso, { evs, plans, fers, cronograma: cronoDia })}
                 style={{
                   minHeight: 80, borderRadius: 10,
                   background: tieneFeriado ? '#ffedd5' : esOtroMes ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.7)',
@@ -376,9 +338,9 @@ export default function CalendarioView({ onVolver }) {
                   </div>
                 ))}
 
-                {cronograma.map((c, ci) => (
+                {cronoDia.map((c, ci) => (
                   <div key={ci}
-                    onClick={e => { e.stopPropagation(); setPlanSeleccionada(c.id_planificacion); }}
+                    onClick={e => { e.stopPropagation(); setModalClase(c); }}
                     style={{ ...chipStyle(tipoCronogramaColor(c.tipo)), cursor: 'pointer' }}
                     title={`${tipoCronogramaEtiqueta(c.tipo, c.numero)}${c.nombre_plan ? ` · ${c.nombre_plan}` : ''}`}>
                     {tipoCronogramaEtiqueta(c.tipo, c.numero)}
@@ -390,444 +352,65 @@ export default function CalendarioView({ onVolver }) {
         </div>
       </div>
 
-      {/* ═══════════════ MODAL DÍA ═══════════════ */}
-      {modalDia && (
-        <Overlay onClose={() => setModalDia(null)}>
-          <h3 style={modalTitulo}>
-            📅 {formatFechaLarga(modalDia.iso).replace(/^\w/, l => l.toUpperCase())}
-          </h3>
+      {/* ═══════════════ MODALES ═══════════════ */}
 
-          {/* Sin eventos */}
-          {modalDia.evs.length === 0 && modalDia.plans.length === 0 && modalDia.fers.length === 0 && modalDia.cronograma.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: '1.1rem' }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>📭</div>
-              Sin eventos para este día
-            </div>
-          )}
+      <ModalDia
+        modalDia={modalDia}
+        onClose={() => setModalDia(null)}
+        onEditarEvento={handleEditarEvento}
+        onReplanificarEvento={(ev) => { setModalExcepcion(ev); setModalDia(null); }}
+        onEliminarEvento={handleEliminarEvento}
+        onVerCronograma={(idPlan) => { setPlanSeleccionada(idPlan); setModalDia(null); }}
+        onSeleccionarClase={(c) => { setModalClase(c); setModalDia(null); }}
+      />
 
-          {/* Feriados */}
-          {modalDia.fers.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: 'bold', color: '#fb923c', marginBottom: 6, fontSize: '0.95rem' }}>
-                🏖 Feriado / Vacaciones
-              </div>
-              {modalDia.fers.map((f, i) => (
-                <div key={i} style={{
-                  background: '#ffedd5', borderRadius: 10,
-                  padding: '10px 14px', marginBottom: 6, fontSize: '1rem',
-                }}>
-                  <b>{f.nombre}</b>
-                  {f.tipo && <span style={{ color: '#999', marginLeft: 8, fontSize: '0.85rem' }}>({f.tipo})</span>}
-                </div>
-              ))}
-            </div>
-          )}
+      <ModalClase
+        modalClase={modalClase}
+        onClose={() => setModalClase(null)}
+      />
 
-          {/* Eventos recurrentes */}
-          {modalDia.evs.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: 'bold', color: '#374151', marginBottom: 6, fontSize: '0.95rem' }}>
-                🕐 Eventos
-              </div>
-              {modalDia.evs.map((ev, i) => (
-                <div key={i} style={{
-                  background: ev.color + '22',
-                  border: `2px solid ${ev.color}`,
-                  borderRadius: 10, padding: '10px 14px', marginBottom: 8,
-                }}>
-                  <div style={{ fontWeight: 'bold', color: '#1f2937', fontSize: '1.05rem' }}>
-                    {ev.titulo}
-                    {ev.replanificado && <span style={{ color: '#fb923c', marginLeft: 6, fontSize: '0.85rem' }}>🔄 Replanificado</span>}
-                  </div>
-                  <div style={{ color: '#555', fontSize: '0.9rem', marginTop: 4 }}>
-                    🕐 {ev.hora_inicio?.slice(0,5)} – {ev.hora_fin?.slice(0,5)}
-                    {ev.materia && <span style={{ marginLeft: 10 }}>📚 {ev.materia}</span>}
-                    {ev.nombre_escuela && <span style={{ marginLeft: 10 }}>🏫 {ev.nombre_escuela}</span>}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                    <button type="button"
-                      onClick={() => { handleEditarEvento(ev); }}
-                      style={btnAccionStyle('#818cf8')}>✏️ Editar serie
-                    </button>
-                    <button type="button"
-                      onClick={() => { setModalExcepcion(ev); setModalDia(null); }}
-                      style={btnAccionStyle('#fb923c')}>🔄 Replanificar este día
-                    </button>
-                    <button type="button"
-                      onClick={() => handleEliminarEvento(ev.id_evento)}
-                      style={btnAccionStyle('#f87171')}>🗑 Eliminar serie
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      <ModalEvento
+        visible={modalEvento}
+        formEvento={formEvento}
+        setFormEvento={setFormEvento}
+        editando={editando}
+        guardando={guardando}
+        onGuardar={handleGuardarEvento}
+        onCancelar={() => { setModalEvento(false); setEditando(null); }}
+        toggleDia={toggleDia}
+      />
 
-          {/* Planificaciones */}
-          {modalDia.plans.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: 'bold', color: '#374151', marginBottom: 6, fontSize: '0.95rem' }}>
-                📋 Clases planificadas
-              </div>
-              {modalDia.plans.map((p, i) => (
-                <div key={i} style={{
-                  background: '#ede9fe', border: '2px solid #818cf8',
-                  borderRadius: 10, padding: '10px 14px', marginBottom: 8,
-                }}>
-                  <div style={{ fontWeight: 'bold', color: '#1f2937', fontSize: '1.05rem' }}>
-                    {p.nombre_clase}
-                  </div>
-                  {p.tema && <div style={{ color: '#555', fontSize: '0.9rem', marginTop: 2 }}>Tema: {p.tema}</div>}
-                  {p.duracion && <div style={{ color: '#555', fontSize: '0.9rem' }}>Duración: {p.duracion}</div>}
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    <button type="button"
-                      onClick={() => { setPlanSeleccionada(p.id_planificacion); setModalDia(null); }}
-                      style={btnAccionStyle('#818cf8')}>
-                      📋 Ver cronograma
-                    </button>
-                    {p.url_archivo && (
-                      <a href={p.url_archivo} target="_blank" rel="noreferrer"
-                        style={{ ...btnAccionStyle('#34d399'), textDecoration: 'none', display: 'inline-block' }}>
-                        📄 Ver planificación
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      <ModalFeriado
+        visible={modalFeriado}
+        formFeriado={formFeriado}
+        setFormFeriado={setFormFeriado}
+        guardando={guardando}
+        onGuardar={handleGuardarFeriado}
+        onCancelar={() => setModalFeriado(false)}
+      />
 
-          {modalDia.cronograma.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: 'bold', color: '#374151', marginBottom: 6, fontSize: '0.95rem' }}>
-                📅 Cronograma del día
-              </div>
-              {modalDia.cronograma.map((c, i) => (
-                <div key={i} style={{
-                  background: `${tipoCronogramaColor(c.tipo)}22`,
-                  border: `2px solid ${tipoCronogramaColor(c.tipo)}`,
-                  borderRadius: 10, padding: '10px 14px', marginBottom: 8,
-                }}>
-                  <div style={{ fontWeight: 'bold', color: '#1f2937', fontSize: '1.05rem' }}>
-                    {tipoCronogramaEtiqueta(c.tipo, c.numero)}
-                  </div>
-                  <div style={{ color: '#555', fontSize: '0.9rem', marginTop: 4 }}>
-                    {c.nombre_plan && <span style={{ marginRight: 10 }}>📚 {c.nombre_plan}</span>}
-                    {c.tema_clase && <span>📌 {c.tema_clase}</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      <ModalDetalleEvento
+        modalDetalle={modalDetalle}
+        onClose={() => setModalDetalle(null)}
+        onEditar={handleEditarEvento}
+        onReplanificar={(ev) => { setModalExcepcion(ev); setModalDetalle(null); }}
+        onEliminar={handleEliminarEvento}
+      />
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-            <button type="button" onClick={() => setModalDia(null)} style={btnAccionStyle('#94a3b8')}>
-              Cerrar
-            </button>
-          </div>
-        </Overlay>
-      )}
+      <ModalExcepcion
+        modalExcepcion={modalExcepcion}
+        formExc={formExc}
+        setFormExc={setFormExc}
+        guardando={guardando}
+        onConfirmar={handleGuardarExcepcion}
+        onCancelar={() => setModalExcepcion(null)}
+      />
 
-      {/* ═══════════════ MODAL EVENTO RECURRENTE ═══════════════ */}
-      {modalEvento && (
-        <Overlay onClose={() => { if (!guardando) { setModalEvento(false); setEditando(null); } }}>
-          <h3 style={modalTitulo}>{editando ? '✏️ Editar evento' : '+ Nuevo evento recurrente'}</h3>
-
-          <label style={labelStyle}>Título *</label>
-          <input style={inputStyle} placeholder="Ej: Física 3° B"
-            value={formEvento.titulo}
-            onChange={e => setFormEvento(p => ({...p, titulo: e.target.value}))} />
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Materia</label>
-              <input style={inputStyle} placeholder="Ej: Física"
-                value={formEvento.materia}
-                onChange={e => setFormEvento(p => ({...p, materia: e.target.value}))} />
-            </div>
-            <div>
-              <label style={labelStyle}>Escuela</label>
-              <input style={inputStyle} placeholder="Nombre de la institución"
-                value={formEvento.nombre_escuela}
-                onChange={e => setFormEvento(p => ({...p, nombre_escuela: e.target.value}))} />
-            </div>
-          </div>
-
-          <label style={labelStyle}>
-            Días de la semana *
-            {formEvento.dias_semana.length === 0 && (
-              <span style={{ color: '#ef4444', marginLeft: 8, fontWeight: 'normal', fontSize: '0.85rem' }}>
-                (seleccioná al menos uno)
-              </span>
-            )}
-          </label>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-            {DIAS_SEMANA.map(({ num, label }) => (
-              <button key={num} type="button" onClick={() => toggleDia(num)}
-                style={{
-                  padding: '6px 12px', borderRadius: 20, border: '2px solid',
-                  borderColor: formEvento.dias_semana.includes(num) ? '#f472b6' : '#cbd5e1',
-                  background:  formEvento.dias_semana.includes(num) ? '#f472b6' : 'white',
-                  color:       formEvento.dias_semana.includes(num) ? 'white'   : '#374151',
-                  cursor: 'pointer', fontFamily: "'Inkfree', cursive", fontWeight: 'bold',
-                }}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Hora inicio *</label>
-              <input type="time" style={inputStyle}
-                value={formEvento.hora_inicio}
-                onChange={e => setFormEvento(p => ({...p, hora_inicio: e.target.value}))} />
-            </div>
-            <div>
-              <label style={labelStyle}>Hora fin *</label>
-              <input type="time" style={inputStyle}
-                value={formEvento.hora_fin}
-                onChange={e => setFormEvento(p => ({...p, hora_fin: e.target.value}))} />
-            </div>
-            <div>
-              <label style={labelStyle}>Fecha inicio *</label>
-              <input type="date" style={inputStyle}
-                value={formEvento.fecha_inicio}
-                onChange={e => setFormEvento(p => ({...p, fecha_inicio: e.target.value}))} />
-            </div>
-            <div>
-              <label style={labelStyle}>Fecha fin (opcional)</label>
-              <input type="date" style={inputStyle}
-                value={formEvento.fecha_fin}
-                onChange={e => setFormEvento(p => ({...p, fecha_fin: e.target.value}))} />
-            </div>
-          </div>
-
-          <label style={labelStyle}>Color</label>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            {COLORES.map(c => (
-              <div key={c}
-                onClick={() => setFormEvento(p => ({...p, color: c}))}
-                style={{
-                  width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer',
-                  border: formEvento.color === c ? '3px solid #1f2937' : '2px solid transparent',
-                }} />
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button type="button"
-              onClick={() => { setModalEvento(false); setEditando(null); }}
-              style={btnAccionStyle('#94a3b8')} disabled={guardando}>
-              Cancelar
-            </button>
-            <button type="button" onClick={handleGuardarEvento} disabled={guardando}
-              style={{ ...btnAccionStyle('#f472b6'), opacity: guardando ? 0.6 : 1 }}>
-              {guardando ? 'Guardando...' : editando ? 'Guardar cambios' : 'Crear evento'}
-            </button>
-          </div>
-        </Overlay>
-      )}
-
-      {/* ═══════════════ MODAL FERIADO ═══════════════ */}
-      {modalFeriado && (
-        <Overlay onClose={() => { if (!guardando) setModalFeriado(false); }}>
-          <h3 style={modalTitulo}>+ Feriado / Vacaciones</h3>
-
-          <label style={labelStyle}>Nombre *</label>
-          <input style={inputStyle} placeholder="Ej: Día del Maestro"
-            value={formFeriado.nombre}
-            onChange={e => setFormFeriado(p => ({...p, nombre: e.target.value}))} />
-
-          <label style={labelStyle}>Tipo</label>
-          <select style={inputStyle} value={formFeriado.tipo}
-            onChange={e => setFormFeriado(p => ({...p, tipo: e.target.value}))}>
-            <option value="feriado">🗓 Feriado nacional</option>
-            <option value="vacaciones">🏖 Vacaciones</option>
-            <option value="otro">📌 Otro</option>
-          </select>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Desde *</label>
-              <input type="date" style={inputStyle}
-                value={formFeriado.fecha_inicio}
-                onChange={e => setFormFeriado(p => ({...p, fecha_inicio: e.target.value}))} />
-            </div>
-            <div>
-              <label style={labelStyle}>Hasta *</label>
-              <input type="date" style={inputStyle}
-                value={formFeriado.fecha_fin}
-                onChange={e => setFormFeriado(p => ({...p, fecha_fin: e.target.value}))} />
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
-            <button type="button"
-              onClick={() => setModalFeriado(false)}
-              style={btnAccionStyle('#94a3b8')} disabled={guardando}>
-              Cancelar
-            </button>
-            <button type="button" onClick={handleGuardarFeriado} disabled={guardando}
-              style={{ ...btnAccionStyle('#fb923c'), opacity: guardando ? 0.6 : 1 }}>
-              {guardando ? 'Guardando...' : 'Guardar'}
-            </button>
-          </div>
-        </Overlay>
-      )}
-
-      {/* ═══════════════ MODAL DETALLE EVENTO (desde chip) ═══════════════ */}
-      {modalDetalle && (
-        <Overlay onClose={() => setModalDetalle(null)}>
-          <h3 style={{ ...modalTitulo, color: modalDetalle.color }}>{modalDetalle.titulo}</h3>
-          {modalDetalle.materia        && <p style={detalleP}>📚 Materia: <b>{modalDetalle.materia}</b></p>}
-          {modalDetalle.nombre_escuela && <p style={detalleP}>🏫 Escuela: <b>{modalDetalle.nombre_escuela}</b></p>}
-          <p style={detalleP}>🕐 {modalDetalle.hora_inicio?.slice(0,5)} – {modalDetalle.hora_fin?.slice(0,5)}</p>
-          <p style={detalleP}>📅 {modalDetalle.fecha}</p>
-          {modalDetalle.replanificado && (
-            <p style={{ ...detalleP, color: '#fb923c' }}>🔄 Replanificado — {modalDetalle.motivo}</p>
-          )}
-
-          <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-            <button type="button"
-              onClick={() => handleEditarEvento(modalDetalle)}
-              style={btnAccionStyle('#818cf8')}>✏️ Editar serie
-            </button>
-            <button type="button"
-              onClick={() => { setModalExcepcion(modalDetalle); setModalDetalle(null); }}
-              style={btnAccionStyle('#fb923c')}>🔄 Replanificar este día
-            </button>
-            <button type="button"
-              onClick={() => handleEliminarEvento(modalDetalle.id_evento)}
-              style={btnAccionStyle('#f87171')}>🗑 Eliminar serie
-            </button>
-            <button type="button"
-              onClick={() => setModalDetalle(null)}
-              style={btnAccionStyle('#94a3b8')}>Cerrar
-            </button>
-          </div>
-        </Overlay>
-      )}
-
-      {/* ═══════════════ MODAL EXCEPCIÓN ═══════════════ */}
-      {modalExcepcion && (
-        <Overlay onClose={() => { if (!guardando) setModalExcepcion(null); }}>
-          <h3 style={modalTitulo}>🔄 Replanificar — {modalExcepcion.titulo}</h3>
-          <p style={detalleP}>Clase original: <b>{modalExcepcion.fecha}</b></p>
-
-          <label style={labelStyle}>Nueva fecha (vacío = cancelar este día)</label>
-          <input type="date" style={inputStyle}
-            value={formExc.fecha_nueva}
-            onChange={e => setFormExc(p => ({...p, fecha_nueva: e.target.value}))} />
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Nueva hora inicio</label>
-              <input type="time" style={inputStyle}
-                value={formExc.hora_inicio}
-                onChange={e => setFormExc(p => ({...p, hora_inicio: e.target.value}))} />
-            </div>
-            <div>
-              <label style={labelStyle}>Nueva hora fin</label>
-              <input type="time" style={inputStyle}
-                value={formExc.hora_fin}
-                onChange={e => setFormExc(p => ({...p, hora_fin: e.target.value}))} />
-            </div>
-          </div>
-
-          <label style={labelStyle}>Motivo</label>
-          <input style={inputStyle} placeholder="Ej: Feriado, enfermedad..."
-            value={formExc.motivo}
-            onChange={e => setFormExc(p => ({...p, motivo: e.target.value}))} />
-
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
-            <button type="button"
-              onClick={() => setModalExcepcion(null)}
-              style={btnAccionStyle('#94a3b8')} disabled={guardando}>
-              Cancelar
-            </button>
-            <button type="button" onClick={handleGuardarExcepcion} disabled={guardando}
-              style={{ ...btnAccionStyle('#fb923c'), opacity: guardando ? 0.6 : 1 }}>
-              {guardando ? 'Guardando...' : 'Confirmar'}
-            </button>
-          </div>
-        </Overlay>
-      )}
-
-      {/* ═══════════════ MODAL CRONOGRAMA DE PLANIFICACIÓN ═══════════════ */}
-      {planSeleccionada && (
-        <Overlay onClose={() => setPlanSeleccionada(null)}>
-          <div style={{
-            display: 'flex', justifyContent: 'space-between',
-            alignItems: 'center', marginBottom: 16,
-          }}>
-            <h3 style={modalTitulo}>📋 Cronograma de clases</h3>
-            <button
-              onClick={() => setPlanSeleccionada(null)}
-              style={btnAccionStyle('#94a3b8')}>
-              ✕ Cerrar
-            </button>
-          </div>
-          <CalendarioDocente idPlanificacion={planSeleccionada} />
-        </Overlay>
-      )}
+      <ModalCronograma
+        idPlanificacion={planSeleccionada}
+        onClose={() => setPlanSeleccionada(null)}
+      />
 
     </div>
   );
 }
-
-// ── Overlay ───────────────────────────────────────────────────────────────────
-function Overlay({ children, onClose }) {
-  return (
-    <div
-      style={{
-        position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 1000, borderRadius: 'inherit',
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: '#fff9c4', borderRadius: 20, padding: '28px 32px',
-          width: '90%', maxWidth: 520, maxHeight: '88%', overflowY: 'auto',
-          boxShadow: '0 20px 40px rgba(0,0,0,0.3)', fontFamily: "'Inkfree', cursive",
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-// ── Estilos ───────────────────────────────────────────────────────────────────
-const btnNavStyle = {
-  background: 'transparent', border: 'none', fontSize: '1.8rem',
-  cursor: 'pointer', color: '#374151', padding: '0 6px',
-};
-const btnAccionStyle = color => ({
-  background: color, color: 'white', border: 'none', borderRadius: 20,
-  padding: '8px 16px', cursor: 'pointer', fontFamily: "'Inkfree', cursive",
-  fontWeight: 'bold', fontSize: '0.9rem',
-});
-const chipStyle = color => ({
-  background: color, color: 'white', borderRadius: 6,
-  padding: '1px 4px', fontSize: '0.68rem', marginBottom: 2,
-  display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-});
-const inputStyle = {
-  width: '100%', padding: '9px 14px', borderRadius: 10,
-  border: '2px solid #cbd5e1', fontFamily: "'Inkfree', cursive",
-  fontSize: '1rem', marginBottom: 12, boxSizing: 'border-box',
-  background: 'rgba(255,255,255,0.8)', outline: 'none',
-};
-const labelStyle = {
-  display: 'block', fontWeight: 'bold', marginBottom: 4,
-  fontSize: '0.9rem', color: '#374151',
-};
-const modalTitulo = {
-  fontFamily: "'KG Midnight Memories', cursive",
-  fontSize: '1.6rem', marginBottom: 16, color: '#1f2937',
-};
-const detalleP = { margin: '4px 0', fontSize: '1rem' };
