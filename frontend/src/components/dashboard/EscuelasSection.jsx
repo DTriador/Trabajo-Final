@@ -218,7 +218,7 @@ export default function EscuelasSection({ userId, editando }) {
     const handleDeleteCurso = (idCurso) => {
         pedirConfirmacion({
             title: 'Eliminar materia',
-            message: '¿Seguro que querés eliminar esta materia? Esta acción no se puede deshacer.',
+            message: 'Si borrás esta materia, se eliminarán sus planificaciones y clases asociadas. ¿Querés continuar? Esta acción no se puede deshacer.',
             confirmText: 'Sí, eliminar',
             onConfirm: async () => {
                 try {

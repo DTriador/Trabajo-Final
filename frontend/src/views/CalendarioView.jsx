@@ -128,6 +128,21 @@ export default function CalendarioView({ onVolver }) {
     }
   };
 
+  const handleEliminarClase = async (idClase, incluirSiguientes) => {
+    try {
+      await api.delete(`/generar/planificacion/clase/${idClase}`, {
+        params: { incluir_siguientes: incluirSiguientes },
+      });
+      setModalClase(null);
+      await cargarMes();
+      alert(incluirSiguientes
+        ? '✅ Clase y siguientes eliminadas.'
+        : '✅ Clase eliminada.');
+    } catch (e) {
+      alert(`Error al eliminar:\n${extraerError(e)}`);
+    }
+  };
+
   const handleEliminarEvento = async (idEvento) => {
     if (!window.confirm('¿Eliminar este evento recurrente y todas sus ocurrencias?')) return;
     try {
@@ -367,6 +382,7 @@ export default function CalendarioView({ onVolver }) {
       <ModalClase
         modalClase={modalClase}
         onClose={() => setModalClase(null)}
+        onEliminar={handleEliminarClase}
       />
 
       <ModalEvento

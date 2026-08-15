@@ -452,6 +452,63 @@ async def actualizar_estado_clase(id_clase: str, body: EstadoClaseRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/planificacion/clase/{id_clase}")
+async def eliminar_clase(id_clase: str, incluir_siguientes: bool = False):
+    """
+    Elimina una clase del cronograma.
+
+    - incluir_siguientes=False (default): elimina SOLO la clase indicada.
+    - incluir_siguientes=True: elimina esa clase Y todas las posteriores
+      (mismo id_planificacion, numero >= numero_clase) — por ejemplo, para
+      cortar el resto de la cursada desde ese punto en adelante.
+
+    Nota: no toca examenes_planificacion. Si algún examen referenciaba
+    (por número) alguna de las clases borradas, esa referencia queda
+    "colgando" — no se valida acá, es un caso a revisar manualmente si pasa.
+    """
+    try:
+        clase_res = (
+            supabase.table("cronograma_clases")
+            .select("*")
+            .eq("id", id_clase)
+            .single()
+            .execute()
+        )
+        if not clase_res.data:
+            raise HTTPException(status_code=404, detail="Clase no encontrada")
+
+        clase = clase_res.data
+        id_planificacion = clase["id_planificacion"]
+        numero_clase     = clase["numero"]
+
+        if incluir_siguientes:
+            siguientes_res = (
+                supabase.table("cronograma_clases")
+                .select("id")
+                .eq("id_planificacion", id_planificacion)
+                .gte("numero", numero_clase)
+                .execute()
+            )
+            ids_a_borrar = [c["id"] for c in (siguientes_res.data or [])]
+            if ids_a_borrar:
+                supabase.table("cronograma_clases").delete().in_("id", ids_a_borrar).execute()
+            eliminadas = len(ids_a_borrar)
+        else:
+            supabase.table("cronograma_clases").delete().eq("id", id_clase).execute()
+            eliminadas = 1
+
+        return {
+            "ok": True,
+            "eliminadas": eliminadas,
+            "incluyo_siguientes": incluir_siguientes,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ ERROR eliminar clase: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/planificacion/distribuir")
 async def distribuir_temas(payload: DistribuirPayload):
     """

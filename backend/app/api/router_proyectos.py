@@ -148,6 +148,28 @@ async def eliminar_curso(id_curso: str):
         if not curso.data:
             raise HTTPException(status_code=404, detail="Curso no encontrado")
 
+        # 1) Buscar planificaciones asociadas a este curso y borrarlas en cascada
+        try:
+            plans_res = supabase.table("planificacion").select("id_planificacion, id").eq("id_curso", id_curso).execute()
+            plans = plans_res.data or []
+            plan_ids = [(p.get("id_planificacion") or p.get("id")) for p in plans if (p.get("id_planificacion") or p.get("id"))]
+
+            for pid in plan_ids:
+                # Borrar cronograma de clases
+                supabase.table("cronograma_clases").delete().eq("id_planificacion", pid).execute()
+                # Borrar exámenes vinculados
+                supabase.table("examenes_planificacion").delete().eq("id_planificacion", pid).execute()
+                # Borrar recordatorios asociados
+                supabase.table("recordatorios_clase").delete().eq("id_planificacion", pid).execute()
+
+            if plan_ids:
+                supabase.table("planificacion").delete().in_("id_planificacion", plan_ids).execute()
+        except Exception as e:
+            # No queremos que una falla al limpiar planificaciones impida eliminar el curso,
+            # pero lo registramos para seguimiento.
+            print(f"⚠️ Error eliminando planificaciones del curso {id_curso}: {e}")
+
+        # 2) Borrar el curso en sí
         supabase.table("cursos")\
             .delete()\
             .eq("id_curso", id_curso)\
