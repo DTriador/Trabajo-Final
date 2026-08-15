@@ -140,13 +140,14 @@ async def eliminar_escuela(id_escuela: str):
 async def eliminar_curso(id_curso: str):
     """Elimina una materia/curso específico."""
     try:
-        curso = supabase.table("cursos")\
+        curso_res = supabase.table("cursos")\
             .select("*")\
             .eq("id_curso", id_curso)\
-            .single().execute()
+            .execute()
 
-        if not curso.data:
+        if not (curso_res.data and len(curso_res.data) > 0):
             raise HTTPException(status_code=404, detail="Curso no encontrado")
+        curso = curso_res.data[0]
 
         # 1) Buscar planificaciones asociadas a este curso y borrarlas en cascada
         try:

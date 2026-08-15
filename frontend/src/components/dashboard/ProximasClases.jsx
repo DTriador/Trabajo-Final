@@ -1,5 +1,6 @@
 // src/components/dashboard/ProximasClases.jsx
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import './ProximasClases.css';
@@ -192,6 +193,21 @@ const ProximasClases = () => {
     return () => clearInterval(id);
   }, []);
 
+  // Cuando el modal de detalles (seleccionada) esté abierto, añadimos una
+  // clase al <body> para que otros elementos (chat flotante, storage) puedan
+  // atenuarse mediante CSS. Removemos la clase al cerrar.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (seleccionada) {
+      document.body.classList.add('modal-open');
+    } else {
+      document.body.classList.remove('modal-open');
+    }
+    return () => {
+      document.body.classList.remove('modal-open');
+    };
+  }, [seleccionada]);
+
   if (cargando) return null;
 
   const fechaCompleta = (f) => (parseFechaFlexible(f) || new Date(f)).toLocaleString('es-AR', {
@@ -237,8 +253,11 @@ const ProximasClases = () => {
         </div>
       )}
 
-      {/* MODAL DE DETALLES */}
-      {seleccionada && (
+      {/* MODAL DE DETALLES — renderizado con un portal directo a document.body.
+          Así evitamos que quede "atrapado" (recortado y achicado) dentro de
+          algún contenedor ancestro con transform/overflow (por ejemplo el
+          efecto post-it/rotate que usan otras cards del dashboard). */}
+      {seleccionada && createPortal(
         <div
           onClick={() => setSeleccionada(null)}
           style={{
@@ -307,6 +326,24 @@ const ProximasClases = () => {
               </div>
             )}
 
+            {seleccionada.planificacion?.materia && (
+              <div style={{ marginBottom: 16 }}>
+                <b style={{ fontSize: '1.1rem' }}>📖 Materia:</b>
+                <p style={{ margin: '4px 0', color: '#475569', fontSize: '1.05rem' }}>
+                  {seleccionada.planificacion.materia}
+                </p>
+              </div>
+            )}
+
+            {seleccionada.planificacion?.nombre_escuela && (
+              <div style={{ marginBottom: 16 }}>
+                <b style={{ fontSize: '1.1rem' }}>🏫 Escuela:</b>
+                <p style={{ margin: '4px 0', color: '#475569', fontSize: '1.05rem' }}>
+                  {seleccionada.planificacion.nombre_escuela}
+                </p>
+              </div>
+            )}
+
             {seleccionada.url_archivo && (
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24, flexWrap: 'wrap' }}>
                 <a
@@ -323,7 +360,8 @@ const ProximasClases = () => {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

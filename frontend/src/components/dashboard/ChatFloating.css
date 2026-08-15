@@ -7,7 +7,8 @@
     left: 30px !important;
     z-index: 200 !important;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
-    opacity: 0.9 !important;
+    opacity: 1 !important;
+    transition: opacity 180ms ease-in-out !important;
 }
 
 /* =========================
@@ -230,6 +231,11 @@
     height: 55px !important;
     filter: drop-shadow(0 10px 15px rgba(0,0,0,0.4));
     opacity: 0.8;
+}
+/* Cuando haya un modal/overlay prominente, atenuar elementos flotantes */
+body.modal-open .chat-container-main {
+    opacity: 0.28 !important;
+    pointer-events: none !important;
 }
 /* Botón de adjuntar dentro del input area */
 .attach-btn-kokua {

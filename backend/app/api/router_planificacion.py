@@ -334,14 +334,58 @@ async def proximas_clases(id_docente: str, dias: int = 30):
         # Traer clases en el rango de fechas
         res = (
             supabase.table("cronograma_clases")
-            .select("*, planificacion(nombre_clase, tema, duracion, id_curso)")
+            .select("*, planificacion(nombre_clase, tema, duracion, id_curso, id_escuela)")
             .in_("id_planificacion", plans_ids)
             .gte("fecha_programada", desde)
             .lte("fecha_programada", hasta)
             .order("fecha_programada", desc=False)
             .execute()
         )
-        return res.data or []
+        items = res.data or []
+
+        # Enriquecer con materia (cursos) y nombre de escuela (escuelas), igual
+        # que hacemos en /calendario/mes — acá la planificación viene anidada
+        # bajo item["planificacion"] en vez de plana.
+        ids_curso = list({
+            item["planificacion"]["id_curso"]
+            for item in items
+            if item.get("planificacion") and item["planificacion"].get("id_curso")
+        })
+        ids_escuela = list({
+            item["planificacion"]["id_escuela"]
+            for item in items
+            if item.get("planificacion") and item["planificacion"].get("id_escuela")
+        })
+
+        materia_por_curso = {}
+        if ids_curso:
+            cursos_res = supabase.table("cursos") \
+                .select("id_curso, nombre_materia") \
+                .in_("id_curso", ids_curso) \
+                .execute()
+            materia_por_curso = {
+                c["id_curso"]: c.get("nombre_materia", "")
+                for c in (cursos_res.data or [])
+            }
+
+        escuela_por_id = {}
+        if ids_escuela:
+            escuelas_res = supabase.table("escuelas") \
+                .select("id_escuela, nombre_escuela") \
+                .in_("id_escuela", ids_escuela) \
+                .execute()
+            escuela_por_id = {
+                e["id_escuela"]: e.get("nombre_escuela", "")
+                for e in (escuelas_res.data or [])
+            }
+
+        for item in items:
+            plan = item.get("planificacion")
+            if plan:
+                plan["materia"] = materia_por_curso.get(plan.get("id_curso"), "")
+                plan["nombre_escuela"] = escuela_por_id.get(plan.get("id_escuela"), "")
+
+        return items
 
     except Exception as e:
         print(f"❌ proximas_clases: {e}")

@@ -194,6 +194,18 @@
   z-index: 0; /* 👈 BASE BAJA */
   border-top: 10px solid rgba(255,255,255,0.4); 
 }
+
+/* Transición y opacidad por defecto (visibles). Se atenuan cuando hay modal */
+.storage-sticker {
+    opacity: 1;
+    transition: opacity 180ms ease-in-out, filter 180ms ease-in-out;
+}
+
+body.modal-open .storage-sticker {
+    opacity: 0.28;
+    pointer-events: none;
+    filter: saturate(0.85) brightness(0.9);
+}
 /* ==========================================================================
    6. NAVEGACIÓN POST-IT (DERECHA)
    ========================================================================== */

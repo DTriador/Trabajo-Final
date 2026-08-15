@@ -7,7 +7,7 @@ const StorageSticker = ({ usoStorage, visible }) => {
 
   return (
     <div
-      className="handwritten"
+      className="storage-sticker handwritten"
       style={{
         background: 'rgba(255,255,255,0.62)',
         padding: '10px 14px',
