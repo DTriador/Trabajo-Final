@@ -125,7 +125,7 @@ export function PasoMateria({ data, onChange, escuelas, cursos, onEscuelaChange 
         <div style={S.row2}>
           <div>
             <label style={S.label}>Nombre de la planificación</label>
-            <input style={S.input} placeholder="Ej: Sistemas de Control — 2026"
+            <input style={S.input} placeholder="Ej: Lengua y literatura — 2026"
               value={data.nombre_clase}
               onChange={e => onChange('nombre_clase', e.target.value)} />
           </div>
