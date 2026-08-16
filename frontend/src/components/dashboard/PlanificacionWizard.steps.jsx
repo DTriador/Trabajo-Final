@@ -150,7 +150,7 @@ export function PasoMateria({ data, onChange, escuelas, cursos, onEscuelaChange 
         <div>
           <label style={S.label}>Contenido mínimo general de la asignatura</label>
           <textarea style={S.textarea}
-            placeholder="Modelado de sistemas, Respuesta Temporal, Función de Transferencia..."
+            placeholder="Sujeto y predicado, verbos, adjetivos, preposiciones, etc.."
             value={data.contenido_minimo}
             onChange={e => onChange('contenido_minimo', e.target.value)} />
         </div>
@@ -158,7 +158,7 @@ export function PasoMateria({ data, onChange, escuelas, cursos, onEscuelaChange 
         <div>
           <label style={S.label}>Bibliografía general</label>
           <textarea style={{ ...S.textarea, minHeight: 55 }}
-            placeholder="Sistemas de Control Automático — Benjamín Kuo&#10;Ingeniería de Control Moderno — Katshuiko Ogata"
+            placeholder="Con todas las letras I_GD, Editorial Santillana"
             value={data.bibliografia_general}
             onChange={e => onChange('bibliografia_general', e.target.value)} />
         </div>
@@ -204,13 +204,13 @@ export function PasoMateria({ data, onChange, escuelas, cursos, onEscuelaChange 
 
             <label style={S.label}>Contenido mínimo de esta unidad</label>
             <textarea style={{ ...S.textarea, minHeight: 75 }}
-              placeholder="Ej: Transformada de Laplace, Diagrama de bloques, Función de transferencia de lazo abierto y cerrado..."
+              placeholder="Ej: Conjugacion de verbos, tiempos verbales, etc.."
               value={u.contenido}
               onChange={e => updateUnidad(idx, 'contenido', e.target.value)} />
 
             <label style={S.label}>Bibliografía específica de esta unidad</label>
             <textarea style={{ ...S.textarea, minHeight: 45, marginBottom: 0 }}
-              placeholder="Ej: Sistemas de Control Automático — Benjamín Kuo (Cap. 3)"
+              placeholder="Ej: Lengua y Literatura, Editorial Santillana 2024 (Cap. 3)"
               value={u.bibliografia_especifica}
               onChange={e => updateUnidad(idx, 'bibliografia_especifica', e.target.value)} />
           </div>
