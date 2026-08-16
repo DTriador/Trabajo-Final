@@ -143,6 +143,24 @@ export default function CalendarioView({ onVolver }) {
     }
   };
 
+  const handleSuspenderClase = async (idClase, motivo, observacion, desplazarSiguientes) => {
+    try {
+      const res = await api.put(`/generar/planificacion/clase/${idClase}/suspender`, {
+        motivo,
+        observacion,
+        desplazar_siguientes: desplazarSiguientes,
+      });
+      setModalClase(null);
+      await cargarMes();
+      const afectadas = res.data?.clases_afectadas || 0;
+      alert(desplazarSiguientes && afectadas > 0
+        ? `✅ Clase suspendida. Se desplazaron ${afectadas} clase(s) siguientes.`
+        : '✅ Clase suspendida.');
+    } catch (e) {
+      alert(`Error al suspender:\n${extraerError(e)}`);
+    }
+  };
+
   const handleEliminarEvento = async (idEvento) => {
     if (!window.confirm('¿Eliminar este evento recurrente y todas sus ocurrencias?')) return;
     try {
@@ -383,6 +401,7 @@ export default function CalendarioView({ onVolver }) {
         modalClase={modalClase}
         onClose={() => setModalClase(null)}
         onEliminar={handleEliminarClase}
+        onSuspender={handleSuspenderClase}
       />
 
       <ModalEvento

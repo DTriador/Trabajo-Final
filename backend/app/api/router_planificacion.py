@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 # ── Modelos, helpers y generadores extraídos a sus propios módulos ─────────
 from app.api.planificacion_schemas import (
     ClaseWizard, ExamenWizard, FeriadoWizard, PlanificacionWizardPayload,
-    ReplanificarClaseRequest, EstadoClaseRequest,
+    ReplanificarClaseRequest, EstadoClaseRequest, SuspenderClaseRequest,
     UnidadInput, DistribuirPayload, ClaseDistribuida,
 )
 from app.api.planificacion_helpers import (
@@ -186,7 +186,7 @@ async def replanificar_clase(id_clase: str, body: ReplanificarClaseRequest):
         clase_res = (
             supabase.table("cronograma_clases")
             .select("*")
-            .eq("id", id_clase)
+            .eq("id_clase", id_clase)
             .single()
             .execute()
         )
@@ -208,7 +208,7 @@ async def replanificar_clase(id_clase: str, body: ReplanificarClaseRequest):
             "fecha_programada": body.nueva_fecha,
             "estado_clase":     "reprogramada",
             "motivo_reprogramacion": body.motivo or None,
-        }).eq("id", id_clase).execute()
+        }).eq("id_clase", id_clase).execute()
 
         clases_afectadas = [{"id": id_clase, "nueva_fecha": body.nueva_fecha}]
 
@@ -228,7 +228,7 @@ async def replanificar_clase(id_clase: str, body: ReplanificarClaseRequest):
             # Obtener todas las clases POSTERIORES a la replanificada
             siguientes_res = (
                 supabase.table("cronograma_clases")
-                .select("id, numero, fecha_programada, tipo")
+                .select("id_clase, numero, fecha_programada, tipo")
                 .eq("id_planificacion", id_planificacion)
                 .gt("numero", numero_clase)
                 .order("numero", desc=False)
@@ -249,11 +249,11 @@ async def replanificar_clase(id_clase: str, body: ReplanificarClaseRequest):
                         "fecha_programada": fecha_nueva_sig,
                         # Solo marcar como reprogramada si era clase normal
                         "estado_clase": "reprogramada" if sig["tipo"] == "clase" else sig.get("estado_clase", "programada"),
-                    }).eq("id", sig["id"]).execute()
+                    }).eq("id_clase", sig["id_clase"]).execute()
 
-                    clases_afectadas.append({"id": sig["id"], "nueva_fecha": fecha_nueva_sig})
+                    clases_afectadas.append({"id": sig["id_clase"], "nueva_fecha": fecha_nueva_sig})
                 except Exception as e:
-                    print(f"⚠️ No se pudo actualizar clase {sig['id']}: {e}")
+                    print(f"⚠️ No se pudo actualizar clase {sig['id_clase']}: {e}")
 
         return {
             "ok": True,
@@ -484,7 +484,7 @@ async def actualizar_estado_clase(id_clase: str, body: EstadoClaseRequest):
     try:
         res = supabase.table("cronograma_clases") \
             .update({"estado_clase": body.estado}) \
-            .eq("id", id_clase) \
+            .eq("id_clase", id_clase) \
             .execute()
         if not res.data:
             raise HTTPException(status_code=404, detail="Clase no encontrada")
@@ -493,6 +493,101 @@ async def actualizar_estado_clase(id_clase: str, body: EstadoClaseRequest):
         raise
     except Exception as e:
         print(f"❌ ERROR estado clase: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/planificacion/clase/{id_clase}/suspender")
+async def suspender_clase(id_clase: str, body: SuspenderClaseRequest):
+    """
+    Suspende/cancela una clase (NO la elimina — conserva tema_clase,
+    actividades_previstas, recursos_urls, etc.).
+
+    - desplazar_siguientes=False (default): la clase queda marcada como
+      'cancelada' con su motivo/observación, y el resto del cronograma
+      mantiene sus fechas originales.
+    - desplazar_siguientes=True: además, TODAS las clases posteriores
+      (mismo id_planificacion, numero > numero_clase) se desplazan un día
+      hacia adelante en cascada, respetando feriados — misma lógica que ya
+      usa /replanificar, para mantener la secuencia pedagógica.
+    """
+    try:
+        clase_res = (
+            supabase.table("cronograma_clases")
+            .select("*")
+            .eq("id_clase", id_clase)
+            .single()
+            .execute()
+        )
+        if not clase_res.data:
+            raise HTTPException(status_code=404, detail="Clase no encontrada")
+
+        clase = clase_res.data
+        id_planificacion = clase["id_planificacion"]
+        numero_clase      = clase["numero"]
+
+        # 1. Marcar la clase como suspendida/cancelada, guardando motivo y observación.
+        #    El contenido pedagógico (tema_clase, actividades_previstas, recursos_urls)
+        #    no se toca.
+        supabase.table("cronograma_clases").update({
+            "estado_clase":           "cancelada",
+            "motivo_suspension":      body.motivo,
+            "observacion_suspension": body.observacion or None,
+        }).eq("id_clase", id_clase).execute()
+
+        clases_afectadas = [{"id": id_clase, "estado": "cancelada"}]
+
+        # 2. Si corresponde, desplazar las clases posteriores un día hacia
+        #    adelante en cascada (misma lógica que /replanificar).
+        if body.desplazar_siguientes:
+            plan_res = (
+                supabase.table("planificacion")
+                .select("id_docente")
+                .eq("id_planificacion", id_planificacion)
+                .single()
+                .execute()
+            )
+            id_docente = (plan_res.data or {}).get("id_docente", "")
+            feriados   = _cargar_feriados(id_docente)
+
+            siguientes_res = (
+                supabase.table("cronograma_clases")
+                .select("id_clase, numero, fecha_programada, tipo")
+                .eq("id_planificacion", id_planificacion)
+                .gt("numero", numero_clase)
+                .order("numero", desc=False)
+                .execute()
+            )
+            siguientes = siguientes_res.data or []
+
+            for sig in siguientes:
+                try:
+                    fecha_actual_dt = date.fromisoformat(sig["fecha_programada"][:10])
+                    fecha_nueva_sig = (fecha_actual_dt + timedelta(days=1)).isoformat()
+
+                    if _es_feriado(fecha_nueva_sig, feriados):
+                        fecha_nueva_sig = _siguiente_habil(fecha_nueva_sig, feriados)
+
+                    supabase.table("cronograma_clases").update({
+                        "fecha_programada": fecha_nueva_sig,
+                        "estado_clase": "reprogramada" if sig["tipo"] == "clase" else sig.get("estado_clase", "programada"),
+                    }).eq("id_clase", sig["id_clase"]).execute()
+
+                    clases_afectadas.append({"id": sig["id_clase"], "nueva_fecha": fecha_nueva_sig})
+                except Exception as e:
+                    print(f"⚠️ No se pudo desplazar clase {sig['id_clase']}: {e}")
+
+        return {
+            "ok": True,
+            "clase_suspendida": id_clase,
+            "desplazo_siguientes": body.desplazar_siguientes,
+            "clases_afectadas": len(clases_afectadas) - 1,
+            "detalle": clases_afectadas,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ ERROR suspender clase: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -514,7 +609,7 @@ async def eliminar_clase(id_clase: str, incluir_siguientes: bool = False):
         clase_res = (
             supabase.table("cronograma_clases")
             .select("*")
-            .eq("id", id_clase)
+            .eq("id_clase", id_clase)
             .single()
             .execute()
         )
@@ -528,17 +623,17 @@ async def eliminar_clase(id_clase: str, incluir_siguientes: bool = False):
         if incluir_siguientes:
             siguientes_res = (
                 supabase.table("cronograma_clases")
-                .select("id")
+                .select("id_clase")
                 .eq("id_planificacion", id_planificacion)
                 .gte("numero", numero_clase)
                 .execute()
             )
-            ids_a_borrar = [c["id"] for c in (siguientes_res.data or [])]
+            ids_a_borrar = [c["id_clase"] for c in (siguientes_res.data or [])]
             if ids_a_borrar:
-                supabase.table("cronograma_clases").delete().in_("id", ids_a_borrar).execute()
+                supabase.table("cronograma_clases").delete().in_("id_clase", ids_a_borrar).execute()
             eliminadas = len(ids_a_borrar)
         else:
-            supabase.table("cronograma_clases").delete().eq("id", id_clase).execute()
+            supabase.table("cronograma_clases").delete().eq("id_clase", id_clase).execute()
             eliminadas = 1
 
         return {

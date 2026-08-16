@@ -55,6 +55,12 @@ class EstadoClaseRequest(BaseModel):
     estado: str  # "programada" | "dictada" | "cancelada" | "reprogramada"
 
 
+class SuspenderClaseRequest(BaseModel):
+    motivo: str                         # "Feriado" | "Jornada institucional" | ... | "Otro"
+    observacion: str = ""               # texto libre opcional
+    desplazar_siguientes: bool = False  # False = mantener fechas posteriores
+
+
 # ── Distribución automática de temas (IA) ───────────────────────────────────
 
 class UnidadInput(BaseModel):

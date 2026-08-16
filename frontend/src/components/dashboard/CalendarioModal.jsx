@@ -116,7 +116,7 @@ const CalendarioModal = ({ agenda, setAgenda }) => {
     const { clase, nuevaFecha, motivo, desplazar } = replanModal;
     try {
       const res = await api.put(
-        `/generar/planificacion/clase/${clase.id}/replanificar`,
+        `/generar/planificacion/clase/${clase.id_clase}/replanificar`,
         { nueva_fecha: nuevaFecha, motivo, desplazar_siguientes: desplazar }
       );
       const desplazadas = res.data.clases_desplazadas || 0;
@@ -151,15 +151,15 @@ const cambiarEstado = async (clase) => {
 
   // Actualizar local inmediatamente
   setCronograma(prev =>
-    prev.map(c => c.id === clase.id ? { ...c, estado_clase: siguiente } : c)
+    prev.map(c => c.id_clase === clase.id_clase ? { ...c, estado_clase: siguiente } : c)
   );
 
   try {
-    await api.put(`/generar/planificacion/clase/${clase.id}/estado`, { estado: siguiente });
+    await api.put(`/generar/planificacion/clase/${clase.id_clase}/estado`, { estado: siguiente });
   } catch (err) {
     // Revertir si falla
     setCronograma(prev =>
-      prev.map(c => c.id === clase.id ? { ...c, estado_clase: actual } : c)
+      prev.map(c => c.id_clase === clase.id_clase ? { ...c, estado_clase: actual } : c)
     );
     console.error('Error cambiando estado:', err);
   }
