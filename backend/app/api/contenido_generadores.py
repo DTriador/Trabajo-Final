@@ -462,10 +462,7 @@ async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[U
     contenido_pdf = ""
     if file:
         try:
-            try:
-                from PyPDF2 import PdfReader
-            except ImportError:
-                from pypdf import PdfReader
+            from pypdf import PdfReader
             pdf_bytes = await file.read()
             temp_path = f"/tmp/{uuid.uuid4()}.pdf"
             with open(temp_path, "wb") as f:
@@ -507,18 +504,33 @@ async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[U
 
     tamanio_mb = round(os.path.getsize(ruta_local) / (1024 * 1024), 3)
 
-    url_publica = None
+    # Sube al bucket real "documentos_docentes" (el mismo que usan el resto de
+    # los generadores vía FileEngine.upload_to_supabase). Antes esto apuntaba
+    # a un bucket "archivos" que no existe, y si la subida fallaba, el código
+    # caía a una ruta local relativa que el frontend no puede resolver
+    # (termina descargando el index.html de la SPA en vez del .pptx real).
+    # Ahora, si la subida falla, se informa el error real en vez de simular
+    # un éxito con un archivo fantasma.
     try:
         with open(ruta_local, "rb") as f:
-            supabase.storage.from_("archivos").upload(
-                f"{id_docente}/{nombre_archivo}",
-                f.read(),
-                file_options={"content-type": "application/vnd.openxmlformats-officedocument.presentationml.presentation"}
+            supabase.storage.from_("documentos_docentes").upload(
+                path=f"{id_docente}/{nombre_archivo}",
+                file=f.read(),
+                file_options={
+                    "content-type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    "x-upsert": "true",
+                }
             )
-        url_publica = supabase.storage.from_("archivos").get_public_url(f"{id_docente}/{nombre_archivo}")
+        signed = supabase.storage.from_("documentos_docentes").create_signed_url(
+            f"{id_docente}/{nombre_archivo}", 60 * 60 * 24 * 7
+        )
+        url_publica = signed.get("signedURL") or signed.get("signedUrl") or signed.get("signed_url")
     except Exception as e:
-        print(f"⚠️ No pude subir a Supabase Storage: {e}")
-        url_publica = f"/{ruta_local}"
+        print(f"❌ No pude subir la presentación a Supabase Storage: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"No se pudo guardar la presentación en el almacenamiento: {e}"
+        )
 
     try:
         supabase.table("archivos_generados").insert({
