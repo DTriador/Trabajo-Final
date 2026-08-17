@@ -57,7 +57,7 @@ class RAGOrchestrator:
     # GENERATION (GROQ)
     # =========================
     @staticmethod
-    def _generate(prompt: str, max_chars: int = 28000):
+    def _generate(prompt: str, max_chars: int = 14000):
 
         # Evitar prompts excesivamente largos
         if len(prompt) > max_chars:
@@ -69,8 +69,8 @@ class RAGOrchestrator:
 
         modelos_a_probar = [
             "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
             "qwen/qwen3.6-27b",
-            "llama-3.1-8b-instant",
         ]
 
         errores = []
@@ -91,7 +91,7 @@ class RAGOrchestrator:
                             "content": prompt
                         }
                     ],
-                    max_tokens=2048,
+                    max_tokens=1500,
                 )
 
                 print(f"✅ ¡Éxito con el modelo {modelo}!")
