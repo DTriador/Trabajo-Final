@@ -19,7 +19,8 @@ from app.api.planificacion_schemas import (
 )
 from app.api.planificacion_helpers import (
     DIAS_ES, _es_feriado, _siguiente_habil,
-    _obtener_planificacion_por_id, _cargar_feriados, _formatear_fecha_clase,
+    _obtener_planificacion_por_id as _obtener_planificacion_por_id_helper,
+    _cargar_feriados, _formatear_fecha_clase,
 )
 from app.api.planificacion_generadores import (
     _generar_docx_planificacion, _generar_pdf_planificacion,
@@ -27,6 +28,11 @@ from app.api.planificacion_generadores import (
 
 
 router = APIRouter()
+
+
+def _obtener_planificacion_por_id(id_plan: str):
+    """Compatibilidad con el nombre histórico del router y con monkeypatching en tests."""
+    return _obtener_planificacion_por_id_helper(id_plan, client=supabase)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────

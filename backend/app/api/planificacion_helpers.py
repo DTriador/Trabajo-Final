@@ -41,11 +41,12 @@ def _siguiente_habil(fecha_iso: str, feriados: list, dias_max: int = 60) -> str:
     return fecha_iso  # fallback: misma fecha si no encontró
 
 
-def _obtener_planificacion_por_id(id_plan: str):
+def _obtener_planificacion_por_id(id_plan: str, client=None):
     """Busca la planificación por id_planificacion o por id, por compatibilidad con distintos esquemas."""
+    db = client or supabase
     for column in ("id_planificacion", "id"):
         try:
-            res = supabase.table("planificacion").select("*").eq(column, id_plan).single().execute()
+            res = db.table("planificacion").select("*").eq(column, id_plan).single().execute()
             data = getattr(res, "data", None)
             if data:
                 return data

@@ -127,12 +127,12 @@ def _normalize_ppt_slide_payload(slides):
     return normalizadas
 
 
-def _validate_slide_bounds(left, top, width, height, slide_width, slide_height):
+def _validate_slide_bounds(left, top, width, height, slide_width, slide_height, tolerance=0.2):
     return (
-        left >= 0 and
-        top >= 0 and
-        left + width <= slide_width and
-        top + height <= slide_height
+        left >= -tolerance and
+        top >= -tolerance and
+        left + width <= slide_width + tolerance and
+        top + height <= slide_height + tolerance
     )
 
 
