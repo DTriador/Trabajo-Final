@@ -12,17 +12,209 @@ import os
 import re
 import json
 import uuid
+import math
 from io import BytesIO
 from typing import Optional
 from datetime import datetime
 
 from fastapi import HTTPException, UploadFile
 from pptx import Presentation
+from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
 
 from app.core.database import supabase
+from app.services.ai_service import SYSTEM_PROMPT_PPTX
 from app.services.rag_orchestrator import RAGOrchestrator
 from app.api.contenido_helpers import _datos_escuela_materia, _contexto_biblio, _encabezado_documento
+from app.utils.visual_theme import THEME
+
+PPT_SLIDE_WIDTH = Inches(13.33)
+PPT_SLIDE_HEIGHT = Inches(7.5)
+PPT_MARGIN_LEFT = Inches(0.65)
+PPT_MARGIN_RIGHT = Inches(0.65)
+PPT_MARGIN_TOP = Inches(0.6)
+PPT_MARGIN_BOTTOM = Inches(0.45)
+PPT_TITLE_FONT_SIZE = 24
+PPT_SUBTITLE_FONT_SIZE = 18
+PPT_BODY_FONT_SIZE = 18
+PPT_MIN_BODY_FONT_SIZE = 14
+PPT_MAX_BULLETS_PER_SLIDE = 6
+
+
+def _coerce_ppt_text(value, fallback: str = "") -> str:
+    if value is None:
+        return fallback
+    text = str(value).strip()
+    text = re.sub(r"\s+", " ", text)
+    return text or fallback
+
+
+def _clean_ppt_items(items):
+    if items is None:
+        return []
+    if isinstance(items, str):
+        items = [items]
+    if not isinstance(items, list):
+        return []
+
+    limpio = []
+    vistos = set()
+    for item in items:
+        if item is None:
+            continue
+        texto = _coerce_ppt_text(item)
+        if not texto:
+            continue
+        clave = texto.lower()
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        limpio.append(texto)
+    return limpio
+
+
+def _split_ppt_items(items, max_per_slide: int = PPT_MAX_BULLETS_PER_SLIDE):
+    items = _clean_ppt_items(items)
+    if not items:
+        return [[]]
+    return [items[i:i + max_per_slide] for i in range(0, len(items), max_per_slide)]
+
+
+def _normalize_title(text: str, fallback: str = "Diapositiva") -> str:
+    title = _coerce_ppt_text(text, fallback)
+    if len(title) > 80:
+        title = title[:77].rstrip() + "..."
+    return title
+
+
+def _normalize_ppt_slide_payload(slides):
+    if not isinstance(slides, list):
+        slides = []
+
+    normalizadas = []
+    for idx, slide in enumerate(slides, start=1):
+        if not isinstance(slide, dict):
+            continue
+
+        titulo = _normalize_title(
+            slide.get("titulo") or slide.get("subtitulo") or slide.get("title") or slide.get("titulo_slide") or f"Diapositiva {idx}",
+            fallback=f"Diapositiva {idx}",
+        )
+        subtitulo = _coerce_ppt_text(slide.get("subtitle") or slide.get("subtitulo_secundario") or "")
+        contenido = slide.get("contenido") or slide.get("bullets") or slide.get("items") or slide.get("content") or []
+        items = _clean_ppt_items(contenido)
+
+        if not items and slide.get("descripcion"):
+            items = _clean_ppt_items([slide.get("descripcion")])
+
+        if not items:
+            normalizadas.append({"titulo": titulo, "subtitulo": subtitulo, "contenido": []})
+            continue
+
+        bloques = _split_ppt_items(items, max_per_slide=PPT_MAX_BULLETS_PER_SLIDE)
+        for parte_idx, bloque in enumerate(bloques, start=1):
+            slide_title = titulo if len(bloques) == 1 else f"{titulo} — Parte {parte_idx}"
+            slide_subtitle = subtitulo if parte_idx == 1 else ""
+            normalizadas.append({"titulo": slide_title, "subtitulo": slide_subtitle, "contenido": bloque})
+
+    if not normalizadas:
+        normalizadas = [{
+            "titulo": "Introducción",
+            "subtitulo": "",
+            "contenido": ["Tema principal", "Objetivos clave", "Conclusiones relevantes"],
+        }]
+
+    return normalizadas
+
+
+def _validate_slide_bounds(left, top, width, height, slide_width, slide_height):
+    return (
+        left >= 0 and
+        top >= 0 and
+        left + width <= slide_width and
+        top + height <= slide_height
+    )
+
+
+def _estimate_text_block_height(text: str, font_size: int = PPT_BODY_FONT_SIZE):
+    if not text:
+        return Inches(0.25)
+    estimated_chars_per_line = 38
+    line_count = max(1, math.ceil(len(text) / estimated_chars_per_line))
+    return Inches(0.25 + line_count * (font_size / 72) * 1.3)
+
+
+def _add_textbox_text(box, text: str, font_size: int, bold: bool = False, align=PP_ALIGN.LEFT):
+    tf = box.text_frame
+    tf.word_wrap = True
+    tf.margin_left = 0
+    tf.margin_right = 0
+    tf.margin_top = 0
+    tf.margin_bottom = 0
+    para = tf.paragraphs[0]
+    para.text = text
+    para.alignment = align
+    if para.runs:
+        para.runs[0].font.size = Pt(font_size)
+        para.runs[0].font.bold = bold
+
+
+def _create_slide_layout(prs, slide_data, index: int = 1):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+
+    title = _normalize_title(slide_data.get("titulo") or f"Diapositiva {index}", fallback=f"Diapositiva {index}")
+    subtitle = _coerce_ppt_text(slide_data.get("subtitulo") or "")
+    items = _clean_ppt_items(slide_data.get("contenido") or [])
+
+    slide_width = prs.slide_width
+    slide_height = prs.slide_height
+    content_left = PPT_MARGIN_LEFT
+    content_right = slide_width - PPT_MARGIN_RIGHT
+    content_width = content_right - content_left
+
+    title_box = slide.shapes.add_textbox(PPT_MARGIN_LEFT, PPT_MARGIN_TOP, content_width, Inches(0.5))
+    _add_textbox_text(title_box, title, PPT_TITLE_FONT_SIZE, bold=True)
+    title_height = title_box.height
+
+    body_top = PPT_MARGIN_TOP + title_height + Inches(0.15)
+    if subtitle:
+        subtitle_box = slide.shapes.add_textbox(PPT_MARGIN_LEFT, body_top, content_width, Inches(0.35))
+        _add_textbox_text(subtitle_box, subtitle, PPT_SUBTITLE_FONT_SIZE)
+        body_top = subtitle_box.top + subtitle_box.height + Inches(0.12)
+
+    if not items:
+        return slide
+
+    estimated_body = len(items) * Inches(0.34) + Inches(0.2)
+    max_body_height = slide_height - body_top - PPT_MARGIN_BOTTOM
+    if estimated_body > max_body_height:
+        item_count = max(1, int(max_body_height / Inches(0.34)))
+        items = items[:item_count]
+
+    body_box = slide.shapes.add_textbox(PPT_MARGIN_LEFT, body_top, content_width, max_body_height)
+    body_tf = body_box.text_frame
+    body_tf.word_wrap = True
+    body_tf.margin_left = Inches(0.1)
+    body_tf.margin_right = 0
+    body_tf.margin_top = 0
+    body_tf.margin_bottom = 0
+
+    for item in items:
+        if len(item) > 140:
+            item = item[:137].rstrip() + "..."
+        p = body_tf.paragraphs[0] if not body_tf.paragraphs[0].text else body_tf.add_paragraph()
+        p.text = f"• {item}"
+        p.level = 0
+        p.alignment = PP_ALIGN.LEFT
+        if p.runs:
+            p.runs[0].font.size = Pt(PPT_BODY_FONT_SIZE)
+            p.runs[0].font.bold = False
+        p.space_after = Pt(5)
+
+    if not _validate_slide_bounds(PPT_MARGIN_LEFT, PPT_MARGIN_TOP, content_width, slide_height - PPT_MARGIN_TOP - PPT_MARGIN_BOTTOM, slide_width, slide_height):
+        raise ValueError("La diapositiva generada excede los límites del layout.")
+
+    return slide
 
 
 # ── apunte ────────────────────────────────────────────────────────────────────
@@ -453,11 +645,10 @@ async def generar_podcast_docx(
 
 async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[UploadFile]):
     """
-    Genera un PPTX a partir de un tema y, opcionalmente, un PDF de contexto.
-    A diferencia de los generadores anteriores, esta función ya arma la
-    respuesta final (no pasa por process_and_upload): sube directo al bucket
-    "archivos" y registra en archivos_generados, tal como estaba originalmente.
-    Devuelve el dict de respuesta tal cual lo esperaba el endpoint.
+    Genera un PPTX con contenido académico normalizado y layout controlado.
+    El flujo actual llama a la IA para obtener estructura de diapositivas,
+    limpia el contenido, particiona diapositivas largas y valida los límites del
+    slide antes de guardar el archivo final.
     """
     contenido_pdf = ""
     if file:
@@ -474,43 +665,90 @@ async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[U
             print(f"⚠️ No pude leer el PDF: {e}")
             contenido_pdf = ""
 
-    prs = Presentation()
-    prs.slide_width  = Inches(13.33)
-    prs.slide_height = Inches(7.5)
-    slide = prs.slides.add_slide(prs.slide_layouts[0])
-    slide.shapes.title.text = tema
-    slide.placeholders[1].text = f"Generado por Kōkua • {datetime.now().strftime('%d/%m/%Y')}"
+    prompt_base = (
+        f"Genera una presentación académica breve y visualmente clara sobre '{tema}'. "
+        "Usa un estilo de diapositivas con título corto, subtítulo opcional y 3 a 6 ideas principales por slide. "
+        "Prioriza contenido breve, conceptos resumidos y estructura fácil de leer."
+    )
 
     if contenido_pdf:
-        bloques = [contenido_pdf[i:i+500] for i in range(0, min(len(contenido_pdf), 4000), 500)]
-        for i, bloque in enumerate(bloques, start=1):
-            s = prs.slides.add_slide(prs.slide_layouts[1])
-            s.shapes.title.text = f"{tema} — Parte {i}"
-            tf = s.placeholders[1].text_frame
-            tf.text = bloque[:450]
-            for p in tf.paragraphs:
-                for r in p.runs:
-                    r.font.size = Pt(16)
+        datos_json = await RAGOrchestrator.get_context_from_file_and_generate(
+            file_content=contenido_pdf.encode("utf-8", errors="ignore"),
+            user_prompt=prompt_base,
+            system_instruction=SYSTEM_PROMPT_PPTX,
+            id_docente=id_docente,
+        )
     else:
-        for titulo_slide in ["Introducción", "Desarrollo", "Conclusión"]:
-            s = prs.slides.add_slide(prs.slide_layouts[1])
-            s.shapes.title.text = titulo_slide
-            s.placeholders[1].text = f"Contenido sobre {tema}…"
+        datos_json = await RAGOrchestrator.get_context_and_generate(
+            user_prompt=prompt_base,
+            system_instruction=SYSTEM_PROMPT_PPTX,
+            id_docente=id_docente,
+        )
 
-    nombre_archivo = f"{tema.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
+    if isinstance(datos_json, str):
+        texto = datos_json.strip()
+        match = re.search(r"\{.*\}", texto, re.DOTALL)
+        if match:
+            try:
+                datos_json = json.loads(match.group(0))
+            except Exception:
+                datos_json = {}
+        else:
+            try:
+                datos_json = json.loads(texto)
+            except Exception:
+                datos_json = {}
+
+    if not isinstance(datos_json, dict):
+        datos_json = {}
+
+    titulo_presentacion = _coerce_ppt_text(datos_json.get("titulo") or tema, tema)
+    slides_raw = datos_json.get("slides") or []
+    if not isinstance(slides_raw, list):
+        slides_raw = []
+
+    slides = _normalize_ppt_slide_payload(slides_raw)
+    if not slides:
+        slides = [{
+            "titulo": titulo_presentacion,
+            "subtitulo": "",
+            "contenido": ["Objetivo principal", "Conceptos clave", "Conclusiones relevantes"],
+        }]
+
+    prs = Presentation()
+    prs.slide_width = PPT_SLIDE_WIDTH
+    prs.slide_height = PPT_SLIDE_HEIGHT
+
+    titulo_slide = prs.slides.add_slide(prs.slide_layouts[6])
+    background = titulo_slide.background.fill
+    background.solid()
+    background.fore_color.rgb = 0xF5F7FF
+
+    title_box = titulo_slide.shapes.add_textbox(PPT_MARGIN_LEFT, PPT_MARGIN_TOP, prs.slide_width - PPT_MARGIN_LEFT - PPT_MARGIN_RIGHT, Inches(0.7))
+    _add_textbox_text(title_box, titulo_presentacion, PPT_TITLE_FONT_SIZE, bold=True)
+    title_box.line.fill.background()
+    title_box.fill.background()
+
+    subtitle_box = titulo_slide.shapes.add_textbox(
+        PPT_MARGIN_LEFT,
+        title_box.top + title_box.height + Inches(0.15),
+        prs.slide_width - PPT_MARGIN_LEFT - PPT_MARGIN_RIGHT,
+        Inches(0.35),
+    )
+    _add_textbox_text(subtitle_box, f"Generado por Kōkua • {datetime.now().strftime('%d/%m/%Y')}", PPT_SUBTITLE_FONT_SIZE)
+    subtitle_box.line.fill.background()
+    subtitle_box.fill.background()
+
+    for i, slide_data in enumerate(slides, start=1):
+        _create_slide_layout(prs, slide_data, index=i)
+
+    nombre_archivo = f"{titulo_presentacion.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
     os.makedirs("archivos_generados", exist_ok=True)
     ruta_local = f"archivos_generados/{nombre_archivo}"
     prs.save(ruta_local)
 
     tamanio_mb = round(os.path.getsize(ruta_local) / (1024 * 1024), 3)
 
-    # Sube al bucket real "documentos_docentes" (el mismo que usan el resto de
-    # los generadores vía FileEngine.upload_to_supabase). Antes esto apuntaba
-    # a un bucket "archivos" que no existe, y si la subida fallaba, el código
-    # caía a una ruta local relativa que el frontend no puede resolver
-    # (termina descargando el index.html de la SPA en vez del .pptx real).
-    # Ahora, si la subida falla, se informa el error real en vez de simular
-    # un éxito con un archivo fantasma.
     try:
         with open(ruta_local, "rb") as f:
             supabase.storage.from_("documentos_docentes").upload(

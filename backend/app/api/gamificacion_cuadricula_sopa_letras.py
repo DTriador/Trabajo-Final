@@ -13,6 +13,7 @@ from app.api.gamificacion_cuadricula_helpers import (
     _normalizar, _wrap_text, _datos_escuela_materia, _generar_json_ia,
 )
 from app.api.gamificacion_cuadricula_pdf_utils import _dibujar_encabezado_pdf
+from app.utils.visual_theme import THEME, reportlab_rgb
 
 router = APIRouter()
 
@@ -137,11 +138,15 @@ def _renderizar_pdf_sopa(tema, grilla, palabras, mostrar_lista, resumen,
         c, width, height, nombre_escuela, nombre_materia, division, fecha, nombre_alumno
     )
 
+    c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["surface_alt"]))
+    c.roundRect(1.1 * cm, y_start - 1.0 * cm, width - 2.2 * cm, 1.4 * cm, 0.25 * cm, stroke=0, fill=1)
+    c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["primary"]))
     c.setFont("Helvetica-Bold", 16)
     c.drawCentredString(width/2, y_start, f"Sopa de letras: {tema}")
-    y_start -= 0.5*cm
+    y_start -= 0.7 * cm
 
     if resumen:
+        c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["text"]))
         c.setFont("Helvetica-Oblique", 10)
         for i, linea in enumerate(_wrap_text(resumen, 95)):
             c.drawString(2*cm, y_start - i*0.45*cm, linea)
@@ -153,16 +158,26 @@ def _renderizar_pdf_sopa(tema, grilla, palabras, mostrar_lista, resumen,
     x0 = (width - grid_w)/2
     y0 = y_start - grid_w
     font_size = max(8, int(cell * 0.55))
-    c.setFont("Helvetica-Bold", font_size)
+    c.setStrokeColorRGB(*reportlab_rgb(THEME["colors"]["border"]))
+    c.setLineWidth(0.7)
+    c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["grid_fill"]))
     for r in range(N):
         for col in range(N):
             x = x0 + col*cell
             y = y0 + (N-1-r)*cell
-            c.rect(x, y, cell, cell, stroke=1, fill=0)
+            c.rect(x, y, cell, cell, stroke=1, fill=1)
+            c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["text"]))
+            c.setFont("Helvetica-Bold", font_size)
             c.drawCentredString(x + cell/2, y + (cell - font_size) / 2 + 1, grilla[r][col])
+            c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["grid_fill"]))
     if mostrar_lista and palabras:
+        c.setStrokeColorRGB(*reportlab_rgb(THEME["colors"]["border"]))
+        c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["surface"]))
+        c.roundRect(1.5 * cm, y0 - 2.0 * cm, width - 3.0 * cm, 1.8 * cm, 0.2 * cm, stroke=1, fill=1)
+        c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["primary"]))
         c.setFont("Helvetica-Bold", 12)
         c.drawString(2*cm, y0 - 1.2*cm, "Palabras a buscar:")
+        c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["text"]))
         c.setFont("Helvetica", 11)
         cols = 3
         por_col = (len(palabras) + cols - 1)//cols

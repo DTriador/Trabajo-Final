@@ -12,6 +12,7 @@ from app.api.gamificacion_cuadricula_helpers import (
     _normalizar, _wrap_text, _datos_escuela_materia, _generar_json_ia,
 )
 from app.api.gamificacion_cuadricula_pdf_utils import _dibujar_encabezado_pdf
+from app.utils.visual_theme import THEME, reportlab_rgb
 
 router = APIRouter()
 
@@ -203,6 +204,9 @@ def _renderizar_pdf_crucigrama(tema, grilla, horizontales, verticales,
         c, width, height, nombre_escuela, nombre_materia, division, fecha, nombre_alumno
     )
 
+    c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["surface_alt"]))
+    c.roundRect(1.0 * cm, y_after_header - 0.9 * cm, width - 2.0 * cm, 1.4 * cm, 0.25 * cm, stroke=0, fill=1)
+    c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["primary"]))
     c.setFont("Helvetica-Bold", 16)
     c.drawCentredString(width/2, y_after_header, f"Crucigrama: {tema}")
     y_after_header -= 0.6*cm
@@ -216,14 +220,22 @@ def _renderizar_pdf_crucigrama(tema, grilla, horizontales, verticales,
     nums = {(p["r"], p["c"]): p["num"] for p in horizontales + verticales}
 
     num_size = max(5, int(cell * 0.28))
+    c.setStrokeColorRGB(*reportlab_rgb(THEME["colors"]["border"]))
+    c.setLineWidth(0.75)
     for r in range(rows):
         for col in range(cols):
             x = x0 + col*cell
             y = y0 + (rows-1-r)*cell
             if grilla[r][col] == "":
-                c.setFillGray(0.25); c.rect(x, y, cell, cell, stroke=1, fill=1); c.setFillGray(0)
+                c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["primary"]))
+                c.rect(x, y, cell, cell, stroke=1, fill=1)
+                c.setFillColorRGB(1, 1, 1)
             else:
-                c.rect(x, y, cell, cell, stroke=1, fill=0)
+                c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["grid_fill"]))
+                c.rect(x, y, cell, cell, stroke=1, fill=1)
+                c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["text"]))
+                c.setFont("Helvetica-Bold", max(7, int(cell * 0.48)))
+                c.drawCentredString(x + cell/2, y + (cell - max(7, int(cell * 0.48))) / 2 + 1, grilla[r][col])
                 if (r, col) in nums:
                     c.setFont("Helvetica", num_size)
                     c.drawString(x + 1.5, y + cell - num_size - 1, str(nums[(r, col)]))
@@ -234,8 +246,10 @@ def _renderizar_pdf_crucigrama(tema, grilla, horizontales, verticales,
         nonlocal y_pistas
         if y_pistas < 3*cm:
             c.showPage(); y_pistas = height - 2*cm
+        c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["primary"]))
         c.setFont("Helvetica-Bold", 12)
         c.drawString(2*cm, y_pistas, titulo); y_pistas -= 0.5*cm
+        c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["text"]))
         c.setFont("Helvetica", 10)
         for p in lista:
             for linea in _wrap_text(f"{p['num']}. {p['pista']}", 95):
