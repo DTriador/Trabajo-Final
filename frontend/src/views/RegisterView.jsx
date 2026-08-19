@@ -72,15 +72,13 @@ const RegisterView = () => {
       navigate('/login');
 
     } else {
-      const errorMsg = typeof result.message === 'object' 
-        ? JSON.stringify(result.message, null, 2) 
-        : result.message;
-      
       console.error("ERROR BACKEND COMPLETO:", JSON.stringify(result.message, null, 2));
 
       alert(
         "Error de registro:\n" +
-        JSON.stringify(result.message, null, 2)
+        (typeof result.message === 'object'
+          ? JSON.stringify(result.message, null, 2)
+          : result.message)
       );
     }
   };

@@ -77,7 +77,7 @@ class AuthService:
 
         except Exception as e:
             print(f"--- [AUTH SERVICE ERROR] ---: {str(e)}")
-            raise Exception(str(e))
+            raise
     
     @staticmethod
     def login_docente(email: str, password: str):
@@ -100,7 +100,7 @@ class AuthService:
             print(f"--- [LOGIN ERROR] ---: {error_msg}")
             if "Email not confirmed" in error_msg:
                 raise Exception("Por favor, confirma tu correo electrónico en tu bandeja de entrada.")
-            raise Exception("Credenciales inválidas.")
+            raise
     
     @staticmethod
     def actualizar_perfil(id_docente: str, datos: dict):

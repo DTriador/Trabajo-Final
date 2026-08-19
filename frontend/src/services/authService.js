@@ -23,11 +23,11 @@ export const loginUser = async (username, password) => {
     return { success: false, message: 'No se recibió un token válido.' };
 
   } catch (error) {
-    let errorMessage = 'Hubo un error al conectar con el servidor.';
-    if (error.response) {
-      errorMessage = error.response.data.detail || error.response.data.message || 'Credenciales incorrectas.';
-    }
-    return { success: false, message: errorMessage };
+    const detail = error.response?.data?.detail || error.response?.data?.message;
+    const message = typeof detail === 'string'
+      ? detail
+      : detail?.message || error.message || 'Error al iniciar sesión.';
+    return { success: false, message, error: detail };
   }
 };
 
@@ -60,7 +60,14 @@ export const registerUser = async (userData) => {
     console.error("Error en el registro (Backend):", error.response?.data);
     
     // Si el backend devuelve un error de validación (422), extraemos el detalle
-    const errorDetail = error.response?.data?.detail || "Error al crear la cuenta";
+    const errorDetail = error.response?.data?.detail || {
+      type: error.name || 'Error',
+      message: error.message || 'Error al crear la cuenta',
+      code: error.code,
+      status: error.response?.status || null,
+      details: null,
+      hint: null,
+    };
     
     return { 
       success: false, 

@@ -17,6 +17,26 @@ from app.services.email_service import enviar_email
 router = APIRouter(tags=["Autenticación"])
 
 
+def _supabase_error_detail(error: Exception) -> dict:
+    """Conserva los metadatos públicos del error sin incluir credenciales."""
+    response = getattr(error, "response", None)
+    response_data = getattr(response, "data", None)
+    if not isinstance(response_data, dict):
+        response_data = {}
+
+    def value(name: str):
+        return getattr(error, name, None) or response_data.get(name)
+
+    return {
+        "type": type(error).__name__,
+        "message": value("message") or str(error),
+        "code": value("code"),
+        "status": getattr(error, "status", None) or getattr(response, "status_code", None),
+        "details": value("details"),
+        "hint": value("hint"),
+    }
+
+
 # --- ESQUEMAS DE VALIDACIÓN (Específicos para el Router) ---
 
 class UserLogin(BaseModel):
@@ -107,10 +127,11 @@ async def registro(datos: UserRegister):
             "id": user.user.id
         }
     except Exception as e:
-        # Capturamos errores de duplicados o fallos en Supabase Auth
+        detail = _supabase_error_detail(e)
+        print(f"❌ Error de registro [{detail['type']}]: {detail}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
-            detail=f"Error en el registro: {str(e)}"
+            detail=detail,
         )
 
 @router.post("/login")
@@ -129,7 +150,7 @@ async def login(datos: UserLogin):
         if not user_query.data:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, 
-                detail="El nombre de usuario no existe"
+                detail="No existe un perfil docente para ese nombre de usuario"
             )
             
         docente_db = user_query.data[0]
@@ -153,9 +174,11 @@ async def login(datos: UserLogin):
     except HTTPException as e:
         raise e
     except Exception as e:
+        detail = _supabase_error_detail(e)
+        print(f"❌ Error de login [{detail['type']}]: {detail}")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Credenciales inválidas o error de conexión"
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=detail,
         )
 # --- ENDPOINTS DE PERFIL ---
 
