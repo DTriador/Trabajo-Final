@@ -4,7 +4,7 @@ import axios from 'axios';
  * Configuración centralizada de Axios para Kōkua.
  */
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL, 
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
   headers: {
     'Content-Type': 'application/json',
   }

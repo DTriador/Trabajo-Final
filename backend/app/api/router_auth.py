@@ -3,7 +3,7 @@ from app.services.auth_service import AuthService
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from datetime import date
 import re
-from app.core.database import supabase 
+from app.core.database import supabase, supabase_admin
 from typing import List, Optional
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -116,9 +116,12 @@ async def registro(datos: UserRegister):
 @router.post("/login")
 async def login(datos: UserLogin):
     try:
+        if supabase_admin is None:
+            raise HTTPException(status_code=500, detail="Falta SUPABASE_SERVICE_KEY en el backend")
+
         # 1. Buscamos el email real asociado al username
         # Es fundamental para que el docente use su 'apodo' pero Supabase use su 'email'
-        user_query = supabase.table("docentes") \
+        user_query = supabase_admin.table("docentes") \
             .select("email, nombre, materia") \
             .eq("username", datos.username) \
             .execute()

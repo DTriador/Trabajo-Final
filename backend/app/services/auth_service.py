@@ -1,4 +1,4 @@
-from app.core.database import supabase
+from app.core.database import supabase, supabase_admin
 from fastapi import HTTPException, status
 
 class AuthService:
@@ -9,6 +9,9 @@ class AuthService:
         """
 
         try:
+            if supabase_admin is None:
+                raise RuntimeError("Falta SUPABASE_SERVICE_KEY para completar el registro.")
+
             # 1. Crear usuario en Supabase Auth
             res = supabase.auth.sign_up({
                 "email": datos['email'],
@@ -37,7 +40,7 @@ class AuthService:
                 "telefono": datos.get('telefono')
             }
 
-            supabase.table("docentes").insert(perfil_docente).execute()
+            supabase_admin.table("docentes").insert(perfil_docente).execute()
 
             # 3. ESCUELAS (N)
             escuelas = datos.get("escuelas", [])
@@ -50,7 +53,7 @@ class AuthService:
                     "ciudad": escuela.get("ciudad")
                 }
 
-                escuela_res = supabase.table("escuelas").insert(escuela_data).execute()
+                escuela_res = supabase_admin.table("escuelas").insert(escuela_data).execute()
 
                 if not escuela_res.data:
                     continue
@@ -68,7 +71,7 @@ class AuthService:
                         "ciclo_lectivo": 2026
                     }
 
-                    supabase.table("cursos").insert(curso_data).execute()
+                    supabase_admin.table("cursos").insert(curso_data).execute()
 
             return res
 

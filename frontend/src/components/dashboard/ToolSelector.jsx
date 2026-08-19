@@ -115,7 +115,7 @@ const ToolSelector = ({ onVolver }) => {
         </div>
 
         <div style={{ position: 'absolute', top: '16px', right: '16px', zIndex: 50 }}>
-          <button onClick={onVolver} style={{
+          <button type="button" onClick={() => onVolver?.()} style={{
             backgroundColor: '#e0f2fe', color: '#0c4a6e',
             border: '2px solid #38bdf8', borderRadius: '50px',
             padding: '6px 16px', cursor: 'pointer',

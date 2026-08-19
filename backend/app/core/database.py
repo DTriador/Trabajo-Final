@@ -10,12 +10,8 @@ load_dotenv(env_path)
 
 # Variables de entorno
 SUPABASE_URL: str = os.environ.get("SUPABASE_URL")
-# Preferimos la SERVICE key (bypassa RLS desde el backend).
-# Si no existe, caemos a la ANON como respaldo.
-SUPABASE_KEY: str = (
-    os.environ.get("SUPABASE_SERVICE_KEY")
-    or os.environ.get("SUPABASE_ANON_KEY")
-)
+SUPABASE_SERVICE_KEY: str = os.environ.get("SUPABASE_SERVICE_KEY")
+SUPABASE_KEY: str = SUPABASE_SERVICE_KEY or os.environ.get("SUPABASE_ANON_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     print(f"ERROR: No se encontró el archivo .env en {env_path}")
@@ -23,3 +19,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 # Cliente de Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase_admin: Client | None = (
+    create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    if SUPABASE_SERVICE_KEY else None
+)
