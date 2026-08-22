@@ -11,7 +11,9 @@ class AuthService:
         try:
             if supabase_admin is None:
                 raise RuntimeError("Falta SUPABASE_SERVICE_KEY para completar el registro.")
-
+            print("=== REGISTRO AUTH ===")
+            print("EMAIL:", repr(datos.get("email")))
+            print("USERNAME:", repr(datos.get("username")))
             # 1. Crear usuario en Supabase Auth
             res = supabase.auth.sign_up({
                 "email": datos['email'],
