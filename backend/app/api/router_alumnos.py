@@ -17,6 +17,7 @@ class AlumnoIn(BaseModel):
     apellido: str | None = None
     email: str
     id_curso: str | None = None
+    id_escuela: str | None = None
 
 class ColumnaIn(BaseModel):
     id_docente: str
@@ -70,6 +71,7 @@ async def eliminar_alumno(id_alumno: str):
 async def importar_csv(
     id_docente: str = Form(...),
     id_curso: str = Form(None),
+    id_escuela: str = Form(None),
     file: UploadFile = File(...),
 ):
     try:
@@ -81,6 +83,7 @@ async def importar_csv(
                 supabase.table("alumnos").insert({
                     "id_docente": id_docente,
                     "id_curso":   id_curso,
+                    "id_escuela": id_escuela,
                     "nombre":     row.get("nombre",   "").strip(),
                     "apellido":   row.get("apellido", "").strip(),
                     "email":      row.get("email",    "").strip(),

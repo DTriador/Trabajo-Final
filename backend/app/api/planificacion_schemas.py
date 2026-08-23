@@ -5,7 +5,7 @@ Modelos Pydantic usados por el módulo de Planificación
 Extraído sin cambios de lógica desde router_planificacion.py.
 """
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ── Wizard de planificación ────────────────────────────────────────────────
@@ -36,6 +36,7 @@ class PlanificacionWizardPayload(BaseModel):
     id_curso: str
     nombre_clase: str
     tema: str
+    color: Optional[str] = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     duracion: Optional[str] = None
     contenido_minimo: Optional[str] = None
     clases: List[ClaseWizard]

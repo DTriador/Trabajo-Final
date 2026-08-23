@@ -10,6 +10,7 @@ import {
   PasoExamenes,
   PasoPreview,
 } from './PlanificacionWizard.steps';
+import { COLORES } from './calendario/calendarioHelpers';
 
 const PASOS = ['📚 Materia', '📅 Calendario', '📝 Exámenes', '✅ Revisión'];
 
@@ -19,6 +20,7 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
   const [paso,      setPaso]      = useState(0);
   const [guardando, setGuardando] = useState(false);
   const [generando, setGenerando] = useState(false);
+  const [coloresOcupados, setColoresOcupados] = useState(new Set());
 
   // Escuelas y cursos
   const [escuelas, setEscuelas] = useState([]);
@@ -29,6 +31,7 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
     id_escuela:           '',
     id_curso:             '',
     nombre_clase:         '',
+    color:                COLORES[0],
     cant_clases:          '',
     duracion:             '',
     contenido_minimo:     '',
@@ -51,7 +54,25 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
   useEffect(() => {
     const userId = user?.id || user?.id_docente || user?.user?.id;
     proyectosService.getEscuelas(userId).then(setEscuelas).catch(console.error);
+    if (!userId) return;
+    api.get(`/generar/planificacion/agenda/${userId}`)
+      .then(res => {
+        const agenda = res.data?.agenda || [];
+        setColoresOcupados(new Set(
+          agenda
+            .filter(plan => plan.estado === 'activa' && plan.color)
+            .map(plan => plan.color.toLowerCase())
+        ));
+      })
+      .catch(console.error);
   }, [user]);
+
+  useEffect(() => {
+    if (coloresOcupados.has(datosMateria.color?.toLowerCase())) {
+      const primerColorLibre = COLORES.find(color => !coloresOcupados.has(color));
+      if (primerColorLibre) changeMateria('color', primerColorLibre);
+    }
+  }, [coloresOcupados]);
 
   const handleEscuelaChange = async (e) => {
     const escId = e.target.value;
@@ -71,6 +92,9 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
     if (paso === 0) {
       if (!datosMateria.id_curso)     { alert('Seleccioná una materia.');                  return false; }
       if (!datosMateria.nombre_clase) { alert('Completá el nombre de la planificación.'); return false; }
+      if (coloresOcupados.has(datosMateria.color?.toLowerCase())) {
+        alert('Seleccioná un color disponible para esta planificación.'); return false;
+      }
       if (!datosMateria.contenido_minimo) { alert('Completá el contenido mínimo general.'); return false; }
       if (!datosMateria.cant_clases || parseInt(datosMateria.cant_clases) < 1) {
         alert('Indicá la cantidad total de clases.'); return false;
@@ -310,6 +334,7 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
         id_docente:       userId,
         id_curso:         datosMateria.id_curso,
         nombre_clase:     datosMateria.nombre_clase,
+        color:            datosMateria.color || COLORES[0],
         tema:             datosMateria.unidades.map(u => u.nombre).join(' | ') || datosMateria.nombre_clase,
         duracion:         datosMateria.duracion || '',
         contenido_minimo: datosMateria.contenido_minimo || '',
@@ -400,6 +425,7 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
             onChange={changeMateria}
             escuelas={escuelas}
             cursos={cursos}
+            coloresOcupados={coloresOcupados}
             onEscuelaChange={handleEscuelaChange}
           />
         )}

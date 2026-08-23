@@ -68,6 +68,7 @@ async def crear_planificacion_wizard(payload: PlanificacionWizardPayload):
             "id_curso":         payload.id_curso,
             "titulo_plan":      payload.nombre_clase or payload.tema,   # ← esto faltaba
             "nombre_clase":     payload.nombre_clase,
+            "color":            payload.color or "#818cf8",
             "fecha":            fecha_principal,
             "duracion":         payload.duracion or "",
             "tema":             payload.tema,
@@ -161,6 +162,14 @@ async def get_cronograma(id_planificacion: str):
     Usado por CalendarioDocente (FullCalendar).
     """
     try:
+        plan_res = (
+            supabase.table("planificacion")
+            .select("color")
+            .eq("id_planificacion", id_planificacion)
+            .single()
+            .execute()
+        )
+        color_plan = (plan_res.data or {}).get("color") or "#818cf8"
         res = (
             supabase.table("cronograma_clases")
             .select("*")
@@ -168,7 +177,7 @@ async def get_cronograma(id_planificacion: str):
             .order("numero", desc=False)
             .execute()
         )
-        return res.data or []
+        return [{**clase, "color": color_plan} for clase in (res.data or [])]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -285,7 +294,7 @@ async def get_agenda_docente(id_docente: str):
         # Primero traemos las planificaciones
         plans_res = (
             supabase.table("planificacion")
-            .select("id_planificacion, nombre_clase, tema, duracion, id_curso, id_escuela, fecha, estado")
+            .select("id_planificacion, nombre_clase, tema, duracion, id_curso, id_escuela, fecha, estado, color")
             .eq("id_docente", id_docente)
             .order("fecha", desc=False)
             .execute()
@@ -340,7 +349,7 @@ async def proximas_clases(id_docente: str, dias: int = 30):
         # Traer clases en el rango de fechas
         res = (
             supabase.table("cronograma_clases")
-            .select("*, planificacion(nombre_clase, tema, duracion, id_curso, id_escuela)")
+            .select("*, planificacion(nombre_clase, tema, duracion, id_curso, id_escuela, color)")
             .in_("id_planificacion", plans_ids)
             .gte("fecha_programada", desde)
             .lte("fecha_programada", hasta)

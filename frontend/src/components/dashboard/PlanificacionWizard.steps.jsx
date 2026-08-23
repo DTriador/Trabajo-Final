@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
+import { COLORES } from './calendario/calendarioHelpers';
 
 // ─── Helpers exportados ───────────────────────────────────────────────────────
 export const toISO = (d) => {
@@ -72,7 +73,7 @@ export const S = {
 // ─────────────────────────────────────────────────────────────────────────────
 // PASO 1 — Materia + Unidades  (versión nueva completa)
 // ─────────────────────────────────────────────────────────────────────────────
-export function PasoMateria({ data, onChange, escuelas, cursos, onEscuelaChange }) {
+export function PasoMateria({ data, onChange, escuelas, cursos, coloresOcupados, onEscuelaChange }) {
 
   const agregarUnidad = () => {
     onChange('unidades', [
@@ -144,6 +145,28 @@ export function PasoMateria({ data, onChange, escuelas, cursos, onEscuelaChange 
             <input style={S.input} placeholder="Ej: 80 minutos"
               value={data.duracion}
               onChange={e => onChange('duracion', e.target.value)} />
+          </div>
+        </div>
+
+        <div>
+          <label style={S.label}>Seleccionar color</label>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            {COLORES.map(color => (
+              <button
+                key={color}
+                type="button"
+                aria-label={`Color ${color}`}
+                disabled={coloresOcupados?.has(color)}
+                onClick={() => onChange('color', color)}
+                style={{
+                  width: 30, height: 30, borderRadius: '50%', background: color,
+                  border: data.color === color ? '3px solid #1f2937' : '2px solid rgba(255,255,255,0.8)',
+                  boxShadow: data.color === color ? '0 0 0 2px rgba(31,41,55,0.25)' : '0 1px 4px rgba(0,0,0,0.15)',
+                  cursor: coloresOcupados?.has(color) ? 'not-allowed' : 'pointer',
+                  opacity: coloresOcupados?.has(color) ? 0.35 : 1,
+                }}
+              />
+            ))}
           </div>
         </div>
 

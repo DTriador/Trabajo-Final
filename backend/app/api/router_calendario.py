@@ -260,13 +260,13 @@ async def get_mes_completo(id_docente: str, anio: int, mes: int):
 
         # 3) Clases planificadas del mes
         plan_result = supabase.table("planificacion") \
-            .select("id_planificacion, fecha, nombre_clase, tema, duracion, estado") \
+            .select("id_planificacion, fecha, nombre_clase, tema, duracion, estado, color") \
             .eq("id_docente", id_docente) \
             .gte("fecha", fecha_inicio.isoformat()) \
             .lte("fecha", fecha_fin.isoformat()) \
             .execute()
         planificaciones = [
-            {**p, "tipo": "planificacion", "color": "#818cf8"}
+            {**p, "tipo": "planificacion", "color": p.get("color") or "#818cf8"}
             for p in (plan_result.data or [])
         ]
 
@@ -284,7 +284,7 @@ async def get_mes_completo(id_docente: str, anio: int, mes: int):
 
         # 5) Cronograma de clases del mes, enriquecido con materia/escuela/horario
         all_plans_res = supabase.table("planificacion") \
-            .select("id_planificacion, nombre_clase, id_curso, id_escuela, duracion") \
+            .select("id_planificacion, nombre_clase, id_curso, id_escuela, duracion, color") \
             .eq("id_docente", id_docente) \
             .execute()
         all_plans = {
@@ -343,9 +343,7 @@ async def get_mes_completo(id_docente: str, anio: int, mes: int):
                     "hora_inicio":    hora_inicio,
                     "hora_fin":       hora_fin,
                     "color": (
-                        "#f59e0b" if c.get("tipo") == "examen"
-                        else "#22c55e" if c.get("tipo") == "recuperatorio"
-                        else "#818cf8"
+                        plan_info.get("color") or "#818cf8"
                     ),
                 })
 

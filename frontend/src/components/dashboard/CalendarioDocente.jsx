@@ -35,20 +35,8 @@ const CalendarioDocente = ({ idPlanificacion }) => {
             estado: clase.estado_clase 
           },
           // Colores dinámicos según el estado (RF05)
-          backgroundColor: clase.estado_clase === 'reprogramada'
-            ? '#f87171'
-            : clase.tipo === 'examen'
-              ? '#f59e0b'
-              : clase.tipo === 'recuperatorio'
-                ? '#22c55e'
-                : '#3b82f6',
-          borderColor: clase.estado_clase === 'reprogramada'
-            ? '#ef4444'
-            : clase.tipo === 'examen'
-              ? '#d97706'
-              : clase.tipo === 'recuperatorio'
-                ? '#16a34a'
-                : '#2563eb',
+          backgroundColor: clase.color || '#818cf8',
+          borderColor: clase.color || '#818cf8',
         }));
         
         setEventos(mapeados);

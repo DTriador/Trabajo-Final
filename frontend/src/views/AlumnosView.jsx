@@ -1,6 +1,7 @@
 // src/views/AlumnosView.jsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import proyectosService from '../services/proyectosService';
 import api from '../api/axios';
 import TablaCalificaciones from '../components/alumnos/TablaCalificaciones';
 import TablaAsistencia     from '../components/alumnos/TablaAsistencia';
@@ -73,9 +74,13 @@ const AlumnosView = ({ onVolver }) => {
   const [mostrarForm, setMostrarForm] = useState(false);
   const [nuevoAlumno, setNuevoAlumno] = useState({ nombre: '', apellido: '', email: '' });
   const [editandoId, setEditandoId]   = useState(null);
-  const [editData, setEditData]       = useState({ nombre: '', apellido: '', email: '' });
+  const [editData, setEditData]       = useState({ nombre: '', apellido: '', email: '', id_escuela: '' });
   const [guardando, setGuardando]     = useState(false);
   const [tabActiva, setTabActiva]     = useState('alumnos');
+  const [escuelas, setEscuelas]       = useState([]);
+  const [escuelaNueva, setEscuelaNueva] = useState('');
+  const [escuelaImportacion, setEscuelaImportacion] = useState('');
+  const [alumnoEnEdicion, setAlumnoEnEdicion] = useState(null);
 
   const userId = user?.id || user?.id_docente || user?.user?.id;
 
@@ -88,15 +93,20 @@ const AlumnosView = ({ onVolver }) => {
     finally { setCargando(false); }
   };
 
-  useEffect(() => { cargar(); }, [userId]);
+  useEffect(() => {
+    cargar();
+    if (userId) proyectosService.getEscuelas(userId).then(setEscuelas).catch(console.error);
+  }, [userId]);
 
   const handleAgregar = async () => {
     if (!nuevoAlumno.nombre.trim() || !nuevoAlumno.email.trim()) {
       alert('Nombre y email son obligatorios'); return;
     }
+    if (!escuelaNueva) { alert('Seleccioná el colegio del alumno'); return; }
     try {
-      await api.post('/alumnos', { ...nuevoAlumno, id_docente: userId });
+      await api.post('/alumnos', { ...nuevoAlumno, id_docente: userId, id_escuela: escuelaNueva });
       setNuevoAlumno({ nombre: '', apellido: '', email: '' });
+      setEscuelaNueva('');
       setMostrarForm(false);
       cargar();
     } catch (e) { alert(`Error: ${e.response?.data?.detail || e.message}`); }
@@ -104,12 +114,14 @@ const AlumnosView = ({ onVolver }) => {
 
   const iniciarEdicion = (alumno) => {
     setEditandoId(alumno.id_alumno);
-    setEditData({ nombre: alumno.nombre, apellido: alumno.apellido || '', email: alumno.email });
+    setAlumnoEnEdicion(alumno);
+    setEditData({ nombre: alumno.nombre, apellido: alumno.apellido || '', email: alumno.email, id_escuela: alumno.id_escuela || '' });
   };
 
   const cancelarEdicion = () => {
     setEditandoId(null);
-    setEditData({ nombre: '', apellido: '', email: '' });
+    setAlumnoEnEdicion(null);
+    setEditData({ nombre: '', apellido: '', email: '', id_escuela: '' });
   };
 
   const guardarEdicion = async (id) => {
@@ -123,6 +135,7 @@ const AlumnosView = ({ onVolver }) => {
         apellido: editData.apellido.trim(),
         email:    editData.email.trim(),
         id_docente: userId,
+        id_escuela: editData.id_escuela || null,
       });
       setAlumnos(prev => prev.map(a => a.id_alumno === id ? { ...a, ...editData } : a));
       cancelarEdicion();
@@ -142,10 +155,12 @@ const AlumnosView = ({ onVolver }) => {
   const handleImportarCSV = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (!escuelaImportacion) { alert('Seleccioná el colegio antes de importar'); return; }
     if (!window.confirm(`¿Importar desde "${file.name}"?\n\nColumnas requeridas: nombre, apellido, email`)) return;
     try {
       const fd = new FormData();
       fd.append('id_docente', userId);
+      fd.append('id_escuela', escuelaImportacion);
       fd.append('file', file);
       const res = await api.post('/alumnos/importar-csv', fd);
       alert(`✅ ${res.data.creados} alumnos importados${res.data.errores.length ? `\n⚠️ ${res.data.errores.length} errores` : ''}`);
@@ -156,6 +171,28 @@ const AlumnosView = ({ onVolver }) => {
   const filtrados = alumnos.filter(a =>
     `${a.nombre} ${a.apellido || ''} ${a.email}`.toLowerCase().includes(busqueda.toLowerCase())
   );
+  const gruposConocidos = escuelas.map(escuela => ({
+    id: escuela.id_escuela,
+    nombre: escuela.nombre_escuela,
+    alumnos: alumnos.filter(a => a.id_escuela === escuela.id_escuela),
+  }));
+  const gruposSinEscuela = {
+    id: '__sin_escuela', nombre: 'Sin colegio asignado',
+    alumnos: alumnos.filter(a => !a.id_escuela),
+  };
+  const gruposDesconocidos = alumnos
+    .filter(a => a.id_escuela && !escuelas.some(escuela => escuela.id_escuela === a.id_escuela))
+    .reduce((grupos, alumno) => {
+      const grupo = grupos.find(item => item.id === alumno.id_escuela);
+      if (grupo) grupo.alumnos.push(alumno);
+      else grupos.push({ id: alumno.id_escuela, nombre: 'Colegio no disponible', alumnos: [alumno] });
+      return grupos;
+    }, [])
+  const gruposPorEscuela = [...gruposConocidos, gruposSinEscuela, ...gruposDesconocidos]
+    .map(grupo => ({
+    ...grupo,
+    alumnos: grupo.alumnos.filter(a => filtrados.includes(a)),
+    })).filter(grupo => grupo.alumnos.length > 0);
 
   if (cargando) return (
     <p style={{ padding: 40, color: '#fff', fontSize: '1.5rem' }}>Cargando alumnos...</p>
@@ -224,6 +261,10 @@ const AlumnosView = ({ onVolver }) => {
               📁 Importar CSV
               <input type="file" accept=".csv" onChange={handleImportarCSV} style={{ display: 'none' }} />
             </label>
+                      <select value={escuelaImportacion} onChange={e => setEscuelaImportacion(e.target.value)} style={{ ...INPUT_TOOLBAR, flex: '0 1 220px', minWidth: '180px' }}>
+                        <option value="">Colegio para importar...</option>
+                        {escuelas.map(escuela => <option key={escuela.id_escuela} value={escuela.id_escuela}>{escuela.nombre_escuela}</option>)}
+                      </select>
           </div>
 
           {/* Formulario nuevo alumno */}
@@ -232,6 +273,10 @@ const AlumnosView = ({ onVolver }) => {
               <input type="text"  placeholder="Nombre *"  value={nuevoAlumno.nombre}   onChange={e => setNuevoAlumno({ ...nuevoAlumno, nombre:   e.target.value })} style={{ ...INPUT_TOOLBAR, minWidth: '120px' }} />
               <input type="text"  placeholder="Apellido"  value={nuevoAlumno.apellido} onChange={e => setNuevoAlumno({ ...nuevoAlumno, apellido: e.target.value })} style={{ ...INPUT_TOOLBAR, minWidth: '120px' }} />
               <input type="email" placeholder="Email *"   value={nuevoAlumno.email}    onChange={e => setNuevoAlumno({ ...nuevoAlumno, email:    e.target.value })} style={{ ...INPUT_TOOLBAR, minWidth: '180px' }} />
+              <select value={escuelaNueva} onChange={e => setEscuelaNueva(e.target.value)} style={{ ...INPUT_TOOLBAR, minWidth: '180px' }}>
+                <option value="">Colegio *</option>
+                {escuelas.map(escuela => <option key={escuela.id_escuela} value={escuela.id_escuela}>{escuela.nombre_escuela}</option>)}
+              </select>
               <button onClick={handleAgregar} style={BTN.guardar}>Guardar</button>
             </div>
           )}
@@ -254,11 +299,18 @@ const AlumnosView = ({ onVolver }) => {
                     <th style={{ padding: '8px 12px' }}>Nombre</th>
                     <th style={{ padding: '8px 12px' }}>Apellido</th>
                     <th style={{ padding: '8px 12px' }}>Email</th>
+                    <th style={{ padding: '8px 12px' }}>Colegio</th>
                     <th style={{ padding: '8px 12px', textAlign: 'right' }}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtrados.map((a, i) => {
+                  {gruposPorEscuela.flatMap(grupo => [
+                    <tr key={`${grupo.id}-heading`}>
+                      <td colSpan={5} style={{ padding: '8px 12px', background: '#dcfce7', color: '#166534', fontWeight: 'bold' }}>
+                        🏫 {grupo.nombre} ({grupo.alumnos.length})
+                      </td>
+                    </tr>,
+                    ...grupo.alumnos.map((a, i) => {
                     const enEdicion = editandoId === a.id_alumno;
                     return (
                       <tr key={a.id_alumno} style={{ borderBottom: '1px solid rgba(180,83,9,0.15)', background: enEdicion ? 'rgba(167,139,250,0.12)' : i % 2 === 0 ? 'rgba(255,255,255,0.35)' : 'transparent' }}>
@@ -267,6 +319,12 @@ const AlumnosView = ({ onVolver }) => {
                             <td style={{ padding: '8px 10px' }}><input type="text"  value={editData.nombre}   onChange={e => setEditData({ ...editData, nombre:   e.target.value })} style={INPUT_BASE} autoFocus /></td>
                             <td style={{ padding: '8px 10px' }}><input type="text"  value={editData.apellido} onChange={e => setEditData({ ...editData, apellido: e.target.value })} style={INPUT_BASE} /></td>
                             <td style={{ padding: '8px 10px' }}><input type="email" value={editData.email}    onChange={e => setEditData({ ...editData, email:    e.target.value })} style={INPUT_BASE} /></td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <select value={editData.id_escuela} onChange={e => setEditData({ ...editData, id_escuela: e.target.value })} style={INPUT_BASE}>
+                                <option value="">Sin colegio</option>
+                                {escuelas.map(escuela => <option key={escuela.id_escuela} value={escuela.id_escuela}>{escuela.nombre_escuela}</option>)}
+                              </select>
+                            </td>
                             <td style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                               <button onClick={() => guardarEdicion(a.id_alumno)} disabled={guardando} style={{ ...BTN.guardar, marginRight: '6px', opacity: guardando ? 0.6 : 1 }}>
                                 {guardando ? '...' : '💾 Guardar'}
@@ -279,6 +337,7 @@ const AlumnosView = ({ onVolver }) => {
                             <td style={{ padding: '8px 12px' }}>{a.nombre}</td>
                             <td style={{ padding: '8px 12px' }}>{a.apellido || '-'}</td>
                             <td style={{ padding: '8px 12px' }}>{a.email}</td>
+                            <td style={{ padding: '8px 12px' }}>{escuelas.find(escuela => escuela.id_escuela === a.id_escuela)?.nombre_escuela || 'Sin colegio'}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                               <button onClick={() => iniciarEdicion(a)} style={BTN.editar} title="Editar alumno">✏️</button>
                               <button onClick={() => handleEliminar(a.id_alumno, a.nombre)} style={BTN.eliminar} title="Eliminar alumno">🗑</button>
@@ -287,7 +346,8 @@ const AlumnosView = ({ onVolver }) => {
                         )}
                       </tr>
                     );
-                  })}
+                  }),
+                  ])}
                 </tbody>
               </table>
             )}
@@ -297,12 +357,22 @@ const AlumnosView = ({ onVolver }) => {
 
       {/* ══════════════ TAB: CALIFICACIONES ══════════════ */}
       {tabActiva === 'calificaciones' && (
-        <TablaCalificaciones alumnos={alumnos} idDocente={userId} />
+        gruposPorEscuela.map(grupo => (
+          <div key={grupo.id}>
+            <h3 style={{ color: '#166534', margin: '8px 0' }}>🏫 {grupo.nombre}</h3>
+            <TablaCalificaciones alumnos={grupo.alumnos} idDocente={userId} />
+          </div>
+        ))
       )}
 
       {/* ══════════════ TAB: ASISTENCIA ══════════════ */}
       {tabActiva === 'asistencia' && (
-        <TablaAsistencia alumnos={alumnos} idDocente={userId} />
+        gruposPorEscuela.map(grupo => (
+          <div key={grupo.id}>
+            <h3 style={{ color: '#166534', margin: '8px 0' }}>🏫 {grupo.nombre}</h3>
+            <TablaAsistencia alumnos={grupo.alumnos} idDocente={userId} />
+          </div>
+        ))
       )}
 
     </div>

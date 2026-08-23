@@ -14,7 +14,7 @@ import ModalCronograma    from '../components/dashboard/calendario/ModalCronogra
 import {
   MESES, DIAS_CORTO, FORM_EVENTO_VACIO, FORM_FERIADO_VACIO,
   extraerError, tipoCronogramaEtiqueta, tipoCronogramaColor,
-  btnNavStyle, btnAccionStyle, chipStyle,
+  btnNavStyle, btnAccionStyle, chipStyle, FERIADO_COLOR,
 } from '../components/dashboard/calendario/calendarioHelpers';
 
 export default function CalendarioView({ onVolver }) {
@@ -330,9 +330,9 @@ export default function CalendarioView({ onVolver }) {
                 onClick={() => abrirModalDia(iso, { evs, plans, fers, cronograma: cronoDia })}
                 style={{
                   minHeight: 80, borderRadius: 10,
-                  background: tieneFeriado ? '#ffedd5' : esOtroMes ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.7)',
+                  background: esOtroMes ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.7)',
                   border: esHoy ? '2px solid #f472b6' : '1px solid rgba(0,0,0,0.07)',
-                  padding: '4px 5px', overflow: 'hidden',
+                  padding: '4px 5px', overflow: 'visible',
                   cursor: 'pointer',
                   transition: 'box-shadow 0.15s',
                 }}
@@ -348,7 +348,7 @@ export default function CalendarioView({ onVolver }) {
                 </div>
 
                 {fers.map((f, fi) => (
-                  <div key={fi} style={chipStyle('#fb923c')} title={f.nombre}>
+                  <div key={fi} style={chipStyle(FERIADO_COLOR)} title={f.nombre}>
                     🏖 {f.nombre.length > 8 ? f.nombre.slice(0,8)+'…' : f.nombre}
                   </div>
                 ))}
@@ -365,7 +365,7 @@ export default function CalendarioView({ onVolver }) {
                 {plans.map((p, pi) => (
                   <div key={pi}
                     onClick={e => { e.stopPropagation(); setPlanSeleccionada(p.id_planificacion); }}
-                    style={{ ...chipStyle('#818cf8'), cursor: 'pointer' }}
+                    style={{ ...chipStyle(p.color || '#818cf8'), cursor: 'pointer' }}
                     title={p.nombre_clase}>
                     📋 {(p.nombre_clase||'').length > 8 ? (p.nombre_clase||'').slice(0,8)+'…' : p.nombre_clase}
                   </div>
@@ -374,7 +374,7 @@ export default function CalendarioView({ onVolver }) {
                 {cronoDia.map((c, ci) => (
                   <div key={ci}
                     onClick={e => { e.stopPropagation(); setModalClase(c); }}
-                    style={{ ...chipStyle(tipoCronogramaColor(c.tipo)), cursor: 'pointer' }}
+                    style={{ ...chipStyle(c.color || tipoCronogramaColor(c.tipo)), cursor: 'pointer' }}
                     title={`${tipoCronogramaEtiqueta(c.tipo, c.numero)}${c.nombre_plan ? ` · ${c.nombre_plan}` : ''}`}>
                     {tipoCronogramaEtiqueta(c.tipo, c.numero)}
                   </div>

@@ -91,7 +91,7 @@ export default function ModalDia({
           </div>
           {plans.map((p, i) => (
             <div key={i} style={{
-              background: '#ede9fe', border: '2px solid #818cf8',
+                background: `${p.color || '#818cf8'}22`, border: `2px solid ${p.color || '#818cf8'}`,
               borderRadius: 10, padding: '10px 14px', marginBottom: 8,
             }}>
               <div style={{ fontWeight: 'bold', color: '#1f2937', fontSize: '1.05rem' }}>
@@ -125,8 +125,8 @@ export default function ModalDia({
             <div key={i}
               onClick={() => onSeleccionarClase(c)}
               style={{
-                background: `${tipoCronogramaColor(c.tipo)}22`,
-                border: `2px solid ${tipoCronogramaColor(c.tipo)}`,
+                background: `${c.color || tipoCronogramaColor(c.tipo)}22`,
+                border: `2px solid ${c.color || tipoCronogramaColor(c.tipo)}`,
                 borderRadius: 10, padding: '10px 14px', marginBottom: 8,
                 cursor: 'pointer',
               }}>

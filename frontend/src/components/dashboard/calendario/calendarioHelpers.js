@@ -9,7 +9,13 @@ export const DIAS_SEMANA = [
   { num: 5, label: 'Vie' }, { num: 6, label: 'Sáb' },
   { num: 7, label: 'Dom' },
 ];
-export const COLORES = ['#f472b6','#818cf8','#34d399','#fb923c','#60a5fa','#a78bfa','#f87171'];
+export const FERIADO_COLOR = '#fb923c';
+export const COLORES = [
+  '#f472b6', '#818cf8', '#34d399', '#60a5fa', '#a78bfa', '#e879f9',
+  '#2dd4bf', '#fb7185', '#22d3ee', '#a3e635', '#38bdf8', '#10b981',
+  '#c084fc', '#f43f5e', '#0ea5e9', '#14b8a6', '#84cc16', '#c026d3',
+  '#7c3aed', '#2563eb', '#059669', '#db2777', '#0891b2', '#65a30d',
+];
 
 export const MESES_LARGO = ['enero','febrero','marzo','abril','mayo','junio',
                      'julio','agosto','septiembre','octubre','noviembre','diciembre'];
