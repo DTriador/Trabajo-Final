@@ -375,8 +375,8 @@ export default function CalendarioView({ onVolver }) {
                   <div key={ci}
                     onClick={e => { e.stopPropagation(); setModalClase(c); }}
                     style={{ ...chipStyle(c.color || tipoCronogramaColor(c.tipo)), cursor: 'pointer' }}
-                    title={`${tipoCronogramaEtiqueta(c.tipo, c.numero)}${c.nombre_plan ? ` · ${c.nombre_plan}` : ''}`}>
-                    {tipoCronogramaEtiqueta(c.tipo, c.numero)}
+                    title={`${tipoCronogramaEtiqueta(c.tipo, c.numero, c.numero_tipo)}${c.nombre_plan ? ` · ${c.nombre_plan}` : ''}`}>
+                    {tipoCronogramaEtiqueta(c.tipo, c.numero, c.numero_tipo)}
                   </div>
                 ))}
               </div>

@@ -84,34 +84,42 @@ async def crear_planificacion_wizard(payload: PlanificacionWizardPayload):
 
         # Clases individuales en cronograma_clases
         if payload.clases:
-            supabase.table("cronograma_clases").insert([
-                {
+            contadores_tipo = {}
+            clases_ordenadas = sorted(
+                enumerate(payload.clases),
+                key=lambda item: (item[1].numero, item[0]),
+            )
+            filas_clases = []
+            for _, clase in clases_ordenadas:
+                tipo = clase.tipo or "clase"
+                contadores_tipo[tipo] = contadores_tipo.get(tipo, 0) + 1
+                filas_clases.append({
                     "id_planificacion": id_plan,
-                    "numero":           c.numero,
-                    "fecha_programada": c.fecha_programada,
-                    "tema_clase":       c.tema_clase,
-                    "tipo":             c.tipo,
-                    "estado_clase":     c.estado_clase,
-                }
-                for c in payload.clases
+                    "numero":           clase.numero,
+                    "numero_tipo":      contadores_tipo[tipo],
+                    "fecha_programada": clase.fecha_programada,
+                    "tema_clase":       clase.tema_clase,
+                    "tipo":             tipo,
+                    "estado_clase":     clase.estado_clase,
+                })
+            supabase.table("cronograma_clases").insert([
+                fila for fila in filas_clases
             ]).execute()
 
         # Exámenes
         if payload.examenes:
-            try:
-                supabase.table("examenes_planificacion").insert([
-                    {
-                        "id_planificacion":    id_plan,
-                        "numero":              ex.numero,
-                        "clases_examen":       ex.clases_examen,
-                        "tiene_recuperatorio": ex.tiene_recuperatorio,
-                        "clases_recup_desde":  ex.clases_recup_desde,
-                        "clases_recup_hasta":  ex.clases_recup_hasta,
-                    }
-                    for ex in payload.examenes
-                ]).execute()
-            except Exception as e:
-                print(f"⚠️ examenes_planificacion: {e}")
+            supabase.table("examenes_planificacion").insert([
+                {
+                    "id_planificacion":    id_plan,
+                    "numero":              ex.numero,
+                    "temas_examen":        ex.temas_examen,
+                    "posicion_examen":     ex.posicion_examen,
+                    "tiene_recuperatorio": ex.tiene_recuperatorio,
+                    "temas_recuperatorio": ex.temas_recuperatorio,
+                    "posicion_recuperatorio": ex.posicion_recuperatorio,
+                }
+                for ex in payload.examenes
+            ]).execute()
 
         # ── Guardar el .docx en Mis Materiales ──────────────────────────────
         # No debe bloquear la creación de la planificación si falla: se avisa
@@ -177,7 +185,18 @@ async def get_cronograma(id_planificacion: str):
             .order("numero", desc=False)
             .execute()
         )
-        return [{**clase, "color": color_plan} for clase in (res.data or [])]
+        eventos = res.data or []
+        contadores = {"clase": 0, "examen": 0, "recuperatorio": 0}
+        normalizados = []
+        for evento in eventos:
+            tipo = evento.get("tipo") or "clase"
+            contadores[tipo] = contadores.get(tipo, 0) + 1
+            normalizados.append({
+                **evento,
+                "numero_tipo": evento.get("numero_tipo") or contadores[tipo],
+                "color": color_plan,
+            })
+        return normalizados
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -311,9 +330,15 @@ async def get_agenda_docente(id_docente: str):
                 .order("numero", desc=False)
                 .execute()
             )
+            contadores_tipo = {"clase": 0, "examen": 0, "recuperatorio": 0}
+            clases = []
+            for clase in clases_res.data or []:
+                tipo = clase.get("tipo") or "clase"
+                contadores_tipo[tipo] = contadores_tipo.get(tipo, 0) + 1
+                clases.append({**clase, "numero_tipo": clase.get("numero_tipo") or contadores_tipo[tipo]})
             resultado.append({
                 **plan,
-                "clases": clases_res.data or [],
+                "clases": clases,
             })
 
         return {"status": "success", "agenda": resultado}
@@ -400,7 +425,15 @@ async def proximas_clases(id_docente: str, dias: int = 30):
                 plan["materia"] = materia_por_curso.get(plan.get("id_curso"), "")
                 plan["nombre_escuela"] = escuela_por_id.get(plan.get("id_escuela"), "")
 
-        return items
+        contadores_tipo = {}
+        normalizados = []
+        for item in items:
+            id_plan = item.get("id_planificacion")
+            tipo = item.get("tipo") or "clase"
+            contadores_plan = contadores_tipo.setdefault(id_plan, {})
+            contadores_plan[tipo] = contadores_plan.get(tipo, 0) + 1
+            normalizados.append({**item, "numero_tipo": item.get("numero_tipo") or contadores_plan[tipo]})
+        return normalizados
 
     except Exception as e:
         print(f"❌ proximas_clases: {e}")

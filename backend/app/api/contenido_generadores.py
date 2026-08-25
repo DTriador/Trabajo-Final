@@ -432,9 +432,11 @@ async def generar_examen_docx(
     materia: Optional[str],
     fecha_examen: str,
     tipos: str,
+    temas: str,
     file: Optional[UploadFile],
     id_escuela: Optional[str],
     id_curso: Optional[str],
+    tipo_evaluacion: str = "Examen",
 ):
     """Genera el .docx de un examen. Devuelve (bytes, nombre_archivo, nombre_materia)."""
     from docx import Document
@@ -451,6 +453,14 @@ async def generar_examen_docx(
     if not seleccionados:
         raise HTTPException(status_code=400, detail="Marcá al menos una actividad con cantidad > 0.")
 
+    try:
+        temas_dict = json.loads(temas or "[]")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Formato inválido en 'temas'.")
+    temas_seleccionados = [str(tema).strip() for tema in temas_dict if str(tema).strip()]
+    if not temas_seleccionados:
+        raise HTTPException(status_code=400, detail=f"Indicá al menos un tema para el {tipo_evaluacion.lower()}.")
+
     # Obtener escuela y materia desde la BD
     nombre_escuela, nombre_materia_db, division, contenido_minimo, bibliografia = \
         _datos_escuela_materia(id_escuela, id_curso)
@@ -464,15 +474,18 @@ async def generar_examen_docx(
         biblio_str = _contexto_biblio(contenido_minimo, bibliografia)
 
     descripcion_tipos = "\n".join([f"- {k}: {v['cantidad']} ítems" for k, v in seleccionados.items()])
+    descripcion_temas = "\n".join(f"- {tema}" for tema in temas_seleccionados)
 
     SYSTEM_PROMPT_EXAMEN = f"""
-    Sos un asistente pedagógico experto. Generá un examen escrito sobre la materia '{nombre_materia}'.
+    Sos un asistente pedagógico experto. Generá un {tipo_evaluacion.lower()} escrito sobre la materia '{nombre_materia}'.
     Incluí EXACTAMENTE los siguientes tipos y cantidades:
     {descripcion_tipos}
+    Evaluá exclusivamente estos temas:
+    {descripcion_temas}
 
     Devolvé EXCLUSIVAMENTE un JSON válido (sin markdown):
     {{
-      "titulo": "Examen de {nombre_materia}",
+    "titulo": "{tipo_evaluacion} de {nombre_materia}",
       "consignas": [
         {{"tipo": "desarrollo|multiple|completar|verdadero_falso",
           "enunciado": "Texto de la consigna",
@@ -482,7 +495,7 @@ async def generar_examen_docx(
     """
 
     if file is not None:
-        prompt = f"Generá el examen de '{nombre_materia}' para la fecha {fecha_examen}, basado en el PDF adjunto."
+        prompt = f"Generá el {tipo_evaluacion.lower()} de '{nombre_materia}' para la fecha {fecha_examen}, evaluando estos temas: {', '.join(temas_seleccionados)}, basado en el PDF adjunto."
         pdf_content = await file.read()
         if not pdf_content:
             raise HTTPException(status_code=400, detail="El PDF está vacío.")
@@ -491,7 +504,7 @@ async def generar_examen_docx(
         )
     else:
         prompt = (
-            f"Generá el examen de '{nombre_materia}' para la fecha {fecha_examen}."
+            f"Generá el {tipo_evaluacion.lower()} de '{nombre_materia}' para la fecha {fecha_examen}, evaluando estos temas: {', '.join(temas_seleccionados)}."
             + (f"\n\n{biblio_str}" if biblio_str else "")
         )
         datos_json = await RAGOrchestrator.get_context_and_generate(
@@ -511,14 +524,14 @@ async def generar_examen_docx(
         datos_json = {}
 
     consignas  = datos_json.get("consignas") or []
-    titulo_doc = datos_json.get("titulo") or f"Examen de {nombre_materia}"
+    titulo_doc = datos_json.get("titulo") or f"{tipo_evaluacion} de {nombre_materia}"
 
     if not consignas:
         raise HTTPException(status_code=500, detail=f"El LLM no devolvió consignas: {str(datos_json)[:300]}")
 
     doc = Document()
     _encabezado_documento(
-        doc, "Examen", nombre_materia, nombre_materia,
+        doc, tipo_evaluacion, nombre_materia, ", ".join(temas_seleccionados),
         nombre_escuela, fecha_str=fecha_examen
     )
 
@@ -536,7 +549,7 @@ async def generar_examen_docx(
     doc.save(buffer)
     buffer.seek(0)
 
-    nombre_archivo = f"Examen_{nombre_escuela}_{nombre_materia}".replace(" ", "_")
+    nombre_archivo = f"{tipo_evaluacion}_{nombre_escuela}_{nombre_materia}".replace(" ", "_")
     return buffer.getvalue(), nombre_archivo, nombre_materia
 
 

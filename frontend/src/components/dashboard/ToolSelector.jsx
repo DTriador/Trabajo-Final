@@ -9,7 +9,7 @@ import PlanificacionWizard from './PlanificacionWizard';
 // Herramientas que necesitan el desplegable de escuela/materia
 const TOOLS_CON_ESCUELA = [
   'planificacion', 'presentacion',
-  'apunte', 'preguntas', 'examen', 'podcast',
+  'apunte', 'preguntas', 'examen', 'recuperatorio', 'podcast',
   'sopa_letras', 'crucigrama', 'unir_flechas',
 ];
 const INITIAL_FORM = {
@@ -17,6 +17,9 @@ const INITIAL_FORM = {
   nombre_clase: '', nombre_presentacion: '', nombre_guia: '',
   numero_preguntas: 10, fecha: '', duracion: '', pdf: null,
   materia_examen: '', fecha_examen: '',
+  temas_examen: [],
+  temas_recuperatorio: [],
+
   examen_tipos: {
     desarrollo:      { activo: false, cantidad: 0 },
     multiple:        { activo: false, cantidad: 0 },
@@ -38,6 +41,7 @@ const tools = [
   { id: 'apunte',        title: 'Apunte / Doc',    icon: '📄', color: '#98ff98', rotate: '-1deg' },
   { id: 'preguntas',     title: 'Preguntas Guía',  icon: '❓', color: '#7afcff', rotate: '2deg'  },
   { id: 'examen',        title: 'Armar Examen',    icon: '📝', color: '#ff7eb9', rotate: '-3deg' },
+  { id: 'recuperatorio', title: 'Armar Recuperatorio', icon: '🔁', color: '#81d4a8', rotate: '2deg' },
   { id: 'podcast',       title: 'Podcast',         icon: '🎙️', color: '#e6ee9c', rotate: '1deg'  },
   { id: 'sopa_letras',   title: 'Sopa de Letras',  icon: '🔠', color: '#ffcc80', rotate: '-2deg' },
   { id: 'crucigrama',    title: 'Crucigrama',      icon: '➕', color: '#ce93d8', rotate: '3deg'  },
@@ -50,6 +54,7 @@ const MODAL_TITLES = {
   apunte:        '📄 Generar Apunte / Doc',
   preguntas:     '❓ Generar Preguntas Guía',
   examen:        '📝 Armar Examen',
+  recuperatorio: '🔁 Armar Recuperatorio',
   podcast:       '🎙️ Generar Podcast',
   sopa_letras:   '🔠 Generar Sopa de Letras',
   crucigrama:    '➕ Generar Crucigrama',

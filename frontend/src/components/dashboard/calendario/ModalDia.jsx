@@ -131,7 +131,7 @@ export default function ModalDia({
                 cursor: 'pointer',
               }}>
               <div style={{ fontWeight: 'bold', color: '#1f2937', fontSize: '1.05rem' }}>
-                {tipoCronogramaEtiqueta(c.tipo, c.numero)}
+                {tipoCronogramaEtiqueta(c.tipo, c.numero, c.numero_tipo)}
               </div>
               <div style={{ color: '#555', fontSize: '0.9rem', marginTop: 4 }}>
                 {c.nombre_plan && <span style={{ marginRight: 10 }}>📚 {c.nombre_plan}</span>}

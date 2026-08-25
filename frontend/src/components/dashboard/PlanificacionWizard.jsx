@@ -134,20 +134,22 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
 
     const total = parseInt(datosMateria.cant_clases);
 
-    // ── Construir mapas de exámenes con UNA sola posición por examen ──────────
-    const examenPorClase = new Map();
+    // ── Agrupar eventos por posición sin descartar coincidencias ─────────────
+    const examenPorPosicion = new Map();
     examenes.forEach((ex, i) => {
-      const n = parseInt(ex.numeroClaseExamen);
-      if (!isNaN(n) && n > 0) examenPorClase.set(n, i + 1);
+      const n = parseInt(ex.posicionExamen);
+      if (!isNaN(n) && n > 0) {
+        examenPorPosicion.set(n, [...(examenPorPosicion.get(n) || []), i + 1]);
+      }
     });
 
-    const recupPorExamen = new Map();
+    const recupPorPosicion = new Map();
     examenes.forEach((ex, i) => {
-      if (ex.tieneRecup && ex.clasesRecupDesde && ex.clasesRecupHasta) {
-        recupPorExamen.set(i + 1, {
-          desde: parseInt(ex.clasesRecupDesde),
-          hasta: parseInt(ex.clasesRecupHasta),
-        });
+      if (ex.tieneRecup && ex.posicionRecuperatorio) {
+        const posicion = parseInt(ex.posicionRecuperatorio);
+        if (!isNaN(posicion) && posicion > 0) {
+          recupPorPosicion.set(posicion, [...(recupPorPosicion.get(posicion) || []), i + 1]);
+        }
       }
     });
 
@@ -155,10 +157,8 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
     // Necesitamos cubrir hasta la posición más alta (sea clase, examen o recup)
     const posicionesOcupadas = new Set([
       ...Array.from({ length: total }, (_, i) => i + 1),
-      ...Array.from(examenPorClase.keys()),
-      ...Array.from(recupPorExamen.values()).flatMap(r =>
-        Array.from({ length: r.hasta - r.desde + 1 }, (_, i) => r.desde + i)
-      ),
+      ...Array.from(examenPorPosicion.keys()),
+      ...Array.from(recupPorPosicion.keys()),
     ]);
     const maxPosicion = Math.max(...posicionesOcupadas, total);
     const fechasClases = fechasCalculadas.slice(0, maxPosicion + 5);
@@ -169,33 +169,20 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
     };
 
     // ── Marcar recuperatorios por POSICIÓN (más robusto que por fecha) ─────
-    // recupPorExamen: Map<numeroExamen, {desde, hasta}>
-    const getRecupForPos = (pos) => {
-      for (const [numEx, rango] of recupPorExamen.entries()) {
-        const desde = Number(rango.desde);
-        const hasta = Number(rango.hasta);
-        if (!isNaN(desde) && !isNaN(hasta) && pos >= desde && pos <= hasta) {
-          return Number(numEx);
-        }
-      }
-      return null;
-    };
+    const getRecupForPos = (pos) => recupPorPosicion.get(pos) || [];
 
-    // total de posiciones marcadas como recuperatorio (suma de longitudes de rangos)
-    const totalRecupPositions = Array.from(recupPorExamen.values()).reduce((s, r) => {
-      const d = Number(r.desde); const h = Number(r.hasta);
-      return s + (isNaN(d) || isNaN(h) ? 0 : Math.max(0, h - d + 1));
-    }, 0);
+    const totalRecupPositions = Array.from(recupPorPosicion.values())
+      .reduce((totalRecuperatorios, recuperatorios) => totalRecuperatorios + recuperatorios.length, 0);
 
     // ── Fechas solo para clases normales (IA) ─────────────────────────────────
     const fechasSoloClases = [];
     for (let pos = 1; pos <= maxPosicion; pos++) {
       const fecha = fechasClases[pos - 1];
       if (!fecha) continue;
-      if (!examenPorClase.has(pos) && getRecupForPos(pos) === null) {
+      if (!examenPorPosicion.has(pos) && getRecupForPos(pos).length === 0) {
         fechasSoloClases.push(fecha);
       }
-      if (fechasSoloClases.length >= total - examenPorClase.size - totalRecupPositions) break;
+      if (fechasSoloClases.length >= total - Array.from(examenPorPosicion.values()).flat().length - totalRecupPositions) break;
     }
 
     try {
@@ -220,39 +207,49 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
       const resultado = [];
       let iaIdx = 0;
       let numClaseReal = 0; // contador de clases normales
+      let numExamenReal = 0;
+      let numRecuperatorioReal = 0;
 
-      for (let pos = 1; pos <= maxPosicion && resultado.length < maxPosicion; pos++) {
+      for (let pos = 1; pos <= maxPosicion; pos++) {
         const fecha = fechasClases[pos - 1];
         if (!fecha) continue; // skip si no hay fecha disponible
 
-        const esExamen = examenPorClase.has(pos);
-        const numEx    = esExamen ? examenPorClase.get(pos) : null;
-         const numExRecup = !esExamen ? getRecupForPos(pos) : null;
-         const esRecup = numExRecup !== null;
+        const examenesEnPosicion = examenPorPosicion.get(pos) || [];
+        const recuperatoriosEnPosicion = getRecupForPos(pos);
+        const esExamen = examenesEnPosicion.length > 0;
+        const esRecup = recuperatoriosEnPosicion.length > 0;
 
         if (esExamen) {
-          const horario = obtenerHorarioPorFecha(fecha);
-          const ex = examenes[numEx - 1];
-          resultado.push({
-            numero: pos, fecha, tipo: 'examen', numExamen: numEx, unidad: null,
-            hora_inicio: horario.hora_inicio || '08:00',
-            hora_fin: horario.hora_fin || '09:00',
-            tema: `Examen ${numEx}${ex?.clasesExamen ? ` — ${ex.clasesExamen}` : ''}`,
+          examenesEnPosicion.forEach(numEx => {
+            numExamenReal++;
+            const horario = obtenerHorarioPorFecha(fecha);
+            const ex = examenes[numEx - 1];
+            resultado.push({
+              numero: pos, numeroTipo: numExamenReal, fecha, tipo: 'examen', numExamen: numEx, unidad: null,
+              hora_inicio: horario.hora_inicio || '08:00',
+              hora_fin: horario.hora_fin || '09:00',
+              tema: `Examen ${numEx}${ex?.temasExamen?.length ? ` — ${ex.temasExamen.join(', ')}` : ''}`,
+            });
           });
-        } else if (esRecup) {
-          const horario = obtenerHorarioPorFecha(fecha);
-          resultado.push({
-            numero: pos, fecha, tipo: 'recuperatorio', numExamen: numExRecup, unidad: null,
-            hora_inicio: horario.hora_inicio || '08:00',
-            hora_fin: horario.hora_fin || '09:00',
-            tema: `Recuperatorio Examen ${numExRecup}`,
+        }
+        if (esRecup) {
+          recuperatoriosEnPosicion.forEach(numExRecup => {
+            numRecuperatorioReal++;
+            const horario = obtenerHorarioPorFecha(fecha);
+            resultado.push({
+              numero: pos, numeroTipo: numRecuperatorioReal, fecha, tipo: 'recuperatorio', numExamen: numExRecup, unidad: null,
+              hora_inicio: horario.hora_inicio || '08:00',
+              hora_fin: horario.hora_fin || '09:00',
+              tema: `Recuperatorio Examen ${numExRecup}`,
+            });
           });
-        } else {
+        }
+        if (!esExamen && !esRecup) {
           const horario = obtenerHorarioPorFecha(fecha);
           numClaseReal++;
           const claseIA = clasesIA[iaIdx] || {};
           resultado.push({
-            numero: pos, fecha, tipo: 'clase',
+            numero: pos, numeroTipo: numClaseReal, fecha, tipo: 'clase',
             unidad: claseIA.unidad || null,
             numExamen: null,
             hora_inicio: horario.hora_inicio || '08:00',
@@ -271,33 +268,45 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
       const resultado = [];
       let iaIdx = 0;
       const totalUnidades = datosMateria.unidades.length || 1;
+      let numClaseReal = 0;
+      let numExamenReal = 0;
+      let numRecuperatorioReal = 0;
 
       for (let pos = 1; pos <= maxPosicion; pos++) {
         const fecha = fechasClases[pos - 1];
         if (!fecha) continue;
 
-        const esExamen = examenPorClase.has(pos);
-        const numEx    = esExamen ? examenPorClase.get(pos) : null;
-        const numExRecup = !esExamen ? getRecupForPos(pos) : null;
-        const esRecup  = numExRecup !== null;
+        const examenesEnPosicion = examenPorPosicion.get(pos) || [];
+        const recuperatoriosEnPosicion = getRecupForPos(pos);
+        const esExamen = examenesEnPosicion.length > 0;
+        const esRecup = recuperatoriosEnPosicion.length > 0;
 
         if (esExamen) {
-          const horario = obtenerHorarioPorFecha(fecha);
-          resultado.push({ numero: pos, fecha, tipo: 'examen', numExamen: numEx, unidad: null,
-            hora_inicio: horario.hora_inicio || '08:00',
-            hora_fin: horario.hora_fin || '09:00',
-            tema: `Examen ${numEx}` });
-        } else if (esRecup) {
-          const horario = obtenerHorarioPorFecha(fecha);
-          resultado.push({ numero: pos, fecha, tipo: 'recuperatorio', numExamen: numExRecup, unidad: null,
-            hora_inicio: horario.hora_inicio || '08:00',
-            hora_fin: horario.hora_fin || '09:00',
-            tema: `Recuperatorio Examen ${numExRecup}` });
-        } else {
+          examenesEnPosicion.forEach(numEx => {
+            numExamenReal++;
+            const horario = obtenerHorarioPorFecha(fecha);
+            resultado.push({ numero: pos, numeroTipo: numExamenReal, fecha, tipo: 'examen', numExamen: numEx, unidad: null,
+              hora_inicio: horario.hora_inicio || '08:00',
+              hora_fin: horario.hora_fin || '09:00',
+              tema: `Examen ${numEx}` });
+          });
+        }
+        if (esRecup) {
+          recuperatoriosEnPosicion.forEach(numExRecup => {
+            numRecuperatorioReal++;
+            const horario = obtenerHorarioPorFecha(fecha);
+            resultado.push({ numero: pos, numeroTipo: numRecuperatorioReal, fecha, tipo: 'recuperatorio', numExamen: numExRecup, unidad: null,
+              hora_inicio: horario.hora_inicio || '08:00',
+              hora_fin: horario.hora_fin || '09:00',
+              tema: `Recuperatorio Examen ${numExRecup}` });
+          });
+        }
+        if (!esExamen && !esRecup) {
           const horario = obtenerHorarioPorFecha(fecha);
           const idxU = Math.floor((iaIdx / Math.max(fechasSoloClases.length, 1)) * totalUnidades);
           const u    = datosMateria.unidades[Math.min(idxU, totalUnidades - 1)];
-          resultado.push({ numero: pos, fecha, tipo: 'clase', unidad: u?.numero || 1, numExamen: null,
+          numClaseReal++;
+          resultado.push({ numero: pos, numeroTipo: numClaseReal, fecha, tipo: 'clase', unidad: u?.numero || 1, numExamen: null,
             hora_inicio: horario.hora_inicio || '08:00',
             hora_fin: horario.hora_fin || '09:00',
             tema: u?.nombre ? `${u.nombre}` : `Clase ${pos}` });
@@ -340,6 +349,7 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
         contenido_minimo: datosMateria.contenido_minimo || '',
         clases: clasesValidas.map(c => ({
           numero:           c.numero,
+          numero_tipo:      c.numeroTipo,
           fecha_programada: combinarFechaHora(c.fecha, c.hora_inicio),
           tema_clase:       c.tema,
           tipo:             c.tipo,
@@ -347,10 +357,11 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
         })),
         examenes: examenes.map((ex, i) => ({
           numero:              i + 1,
-          clases_examen:       ex.clasesExamen || '',
+          temas_examen:        ex.temasExamen || [],
+          posicion_examen:     ex.posicionExamen ? parseInt(ex.posicionExamen) : null,
           tiene_recuperatorio: ex.tieneRecup || false,
-          clases_recup_desde:  ex.clasesRecupDesde ? parseInt(ex.clasesRecupDesde) : null,
-          clases_recup_hasta:  ex.clasesRecupHasta ? parseInt(ex.clasesRecupHasta) : null,
+          temas_recuperatorio: ex.temasRecuperatorio || [],
+          posicion_recuperatorio: ex.posicionRecuperatorio ? parseInt(ex.posicionRecuperatorio) : null,
         })),
         feriados_excluidos: [],
       };
@@ -439,7 +450,7 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
           />
         )}
         {paso === 2 && (
-          <PasoExamenes examenes={examenes} setExamenes={setExamenes} />
+          <PasoExamenes examenes={examenes} setExamenes={setExamenes} temas={datosMateria.unidades.map(u => u.nombre)} />
         )}
         {paso === 3 && (
           <PasoPreview

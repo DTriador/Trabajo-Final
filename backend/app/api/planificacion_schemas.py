@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 class ClaseWizard(BaseModel):
     numero: int
+    numero_tipo: Optional[int] = None
     fecha_programada: str       # "YYYY-MM-DD"
     tema_clase: str
     tipo: str                   # "clase" | "examen" | "recuperatorio"
@@ -20,10 +21,11 @@ class ClaseWizard(BaseModel):
 
 class ExamenWizard(BaseModel):
     numero: int
-    clases_examen: str          # "1, 2, 3"
+    temas_examen: List[str] = []
+    posicion_examen: Optional[int] = None
     tiene_recuperatorio: bool = False
-    clases_recup_desde: Optional[int] = None
-    clases_recup_hasta: Optional[int] = None
+    temas_recuperatorio: List[str] = []
+    posicion_recuperatorio: Optional[int] = None
 
 
 class FeriadoWizard(BaseModel):

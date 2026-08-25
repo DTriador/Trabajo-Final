@@ -24,7 +24,7 @@ export default function ModalClase({ modalClase, onClose, onEliminar, onSuspende
 
   if (!modalClase) return null;
 
-  const etiqueta = `${tipoCronogramaEtiqueta(modalClase.tipo, modalClase.numero)}${modalClase.materia ? ` de ${modalClase.materia}` : ''}`;
+  const etiqueta = `${tipoCronogramaEtiqueta(modalClase.tipo, modalClase.numero, modalClase.numero_tipo)}${modalClase.materia ? ` de ${modalClase.materia}` : ''}`;
   const yaSuspendida = modalClase.estado_clase === 'cancelada';
 
   const confirmarEliminarSola = () => {
@@ -60,7 +60,7 @@ export default function ModalClase({ modalClase, onClose, onEliminar, onSuspende
   return (
     <Overlay onClose={onClose}>
       <h3 style={{ ...modalTitulo, color: tipoCronogramaColor(modalClase.tipo) }}>
-        {tipoCronogramaEtiqueta(modalClase.tipo, modalClase.numero)}
+        {tipoCronogramaEtiqueta(modalClase.tipo, modalClase.numero, modalClase.numero_tipo)}
         {modalClase.materia ? ` de ${modalClase.materia}` : ''}
       </h3>
 

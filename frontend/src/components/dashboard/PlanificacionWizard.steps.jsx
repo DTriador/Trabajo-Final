@@ -595,18 +595,18 @@ export function PasoCalendario({
 // ─────────────────────────────────────────────────────────────────────────────
 // PASO 3 — Exámenes y recuperatorios (igual en ambas versiones)
 // ─────────────────────────────────────────────────────────────────────────────
-export function PasoExamenes({ examenes, setExamenes }) {
+export function PasoExamenes({ examenes, setExamenes, temas }) {
   const setCant = (n) => {
     const cant = Math.max(0, Math.min(20, parseInt(n) || 0));
     setExamenes(prev => {
       const next = [...prev];
       while (next.length < cant)
         next.push({
-          numeroClaseExamen: '',   // ← número de clase donde cae el examen
-          clasesExamen:      '',   // ← descripción (para el tema)
+          posicionExamen:    '',
+          temasExamen:       [],
           tieneRecup:        false,
-          clasesRecupDesde:  '',
-          clasesRecupHasta:  '',
+          posicionRecuperatorio: '',
+          temasRecuperatorio: [],
         });
       return next.slice(0, cant);
     });
@@ -634,25 +634,25 @@ export function PasoExamenes({ examenes, setExamenes }) {
         }}>
           <span style={S.badge('#f59e0b')}>Examen {i + 1}</span>
 
-          {/* Número de clase en que se toma — determina la posición en el cronograma */}
+          {/* La posición ubica el evento; los temas determinan su contenido. */}
           <label style={{ ...S.label, marginTop: 10 }}>
-            Clase en que se toma el examen
+            Posición del examen en el cronograma
           </label>
           <input
             type="number" style={S.input} min={1}
-            placeholder="Ej: 8 (en la clase N° 8 del cronograma)"
-            value={ex.numeroClaseExamen}
-            onChange={e => update(i, 'numeroClaseExamen', e.target.value)}
+            placeholder="Ej: 8"
+            value={ex.posicionExamen}
+            onChange={e => update(i, 'posicionExamen', e.target.value)}
           />
 
-          {/* Descripción de qué clases cubre — solo va al tema */}
-          <label style={S.label}>¿Qué clases cubre? (para el título del examen)</label>
-          <input
-            style={S.input}
-            placeholder="Ej: Clases 1 a 7  —  Unidades 1 y 2"
-            value={ex.clasesExamen}
-            onChange={e => update(i, 'clasesExamen', e.target.value)}
-          />
+          <label style={S.label}>¿Qué temas entran en el examen?</label>
+          {temas.map(tema => (
+            <label key={tema} style={{ display: 'block', marginBottom: 5 }}>
+              <input type="checkbox" checked={ex.temasExamen.includes(tema)}
+                onChange={e => update(i, 'temasExamen', e.target.checked
+                  ? [...ex.temasExamen, tema] : ex.temasExamen.filter(item => item !== tema))} />{' '}{tema}
+            </label>
+          ))}
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.95rem', marginBottom: 8 }}>
             <input type="checkbox" checked={ex.tieneRecup}
@@ -664,15 +664,18 @@ export function PasoExamenes({ examenes, setExamenes }) {
             <div style={{ background: 'rgba(220,252,231,0.6)', border: '1px solid #86efac', borderRadius: 10, padding: 12 }}>
               <span style={S.badge('#22c55e')}>Recuperatorio {i + 1}</span>
               <label style={{ ...S.label, marginTop: 8 }}>
-                Clase en que se toma el recuperatorio
+                Posición del recuperatorio en el cronograma
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 8, alignItems: 'center' }}>
-                <input type="number" style={{ ...S.input, marginBottom: 0 }} placeholder="Desde clase N°" min={1}
-                  value={ex.clasesRecupDesde} onChange={e => update(i, 'clasesRecupDesde', e.target.value)} />
-                <span style={{ fontSize: '0.9rem', color: '#111827' }}>hasta</span>
-                <input type="number" style={{ ...S.input, marginBottom: 0 }} placeholder="Hasta clase N°" min={1}
-                  value={ex.clasesRecupHasta} onChange={e => update(i, 'clasesRecupHasta', e.target.value)} />
-              </div>
+              <input type="number" style={S.input} placeholder="Ej: 12" min={1}
+                value={ex.posicionRecuperatorio} onChange={e => update(i, 'posicionRecuperatorio', e.target.value)} />
+              <label style={S.label}>¿Qué temas entran en el recuperatorio?</label>
+              {temas.map(tema => (
+                <label key={tema} style={{ display: 'block', marginBottom: 5 }}>
+                  <input type="checkbox" checked={ex.temasRecuperatorio.includes(tema)}
+                    onChange={e => update(i, 'temasRecuperatorio', e.target.checked
+                      ? [...ex.temasRecuperatorio, tema] : ex.temasRecuperatorio.filter(item => item !== tema))} />{' '}{tema}
+                </label>
+              ))}
             </div>
           )}
         </div>
@@ -764,7 +767,7 @@ export function PasoPreview({ clases, setClases, onGuardar, guardando, generando
                         color: '#111827', fontFamily: "'Inkfree', cursive",
                       }} />
                     <span style={S.badge(ct)}>
-                      {c.tipo === 'clase' ? `Clase ${c.numero}` : c.tipo === 'examen' ? `Examen ${c.numExamen || ''}` : `Recup. ${c.numExamen || ''}`}
+                      {c.tipo === 'clase' ? `Clase ${c.numeroTipo}` : c.tipo === 'examen' ? `Examen ${c.numeroTipo}` : `Recuperatorio ${c.numeroTipo}`}
                     </span>
                     {cu && (
                       <span style={{ ...S.badge(cu), opacity: 0.85 }}>U{c.unidad}</span>
@@ -787,7 +790,7 @@ export function PasoPreview({ clases, setClases, onGuardar, guardando, generando
 
                   {/* Línea de referencia tipo "Clase N° 25 (16/06): Tema" */}
                   <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#111827' }}>
-                    → {c.tipo === 'clase' ? `Clase N° ${c.numero}` : c.tipo === 'examen' ? 'Examen' : 'Recuperatorio'} ({fechaStr}): {c.tema}
+                    → {c.tipo === 'clase' ? `Clase N° ${c.numeroTipo}` : c.tipo === 'examen' ? `Examen ${c.numeroTipo}` : `Recuperatorio ${c.numeroTipo}`} ({fechaStr}): {c.tema}
                   </p>
                 </div>
               </div>

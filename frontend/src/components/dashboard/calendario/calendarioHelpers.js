@@ -47,9 +47,9 @@ export const formatFechaLarga = (iso) => {
   return `${diasNombre[f.getDay()]} ${d} de ${MESES_LARGO[m - 1]} de ${y}`;
 };
 
-export const tipoCronogramaEtiqueta = (tipo, numero) => {
-  const etiqueta = tipo === 'examen' ? 'Examen' : tipo === 'recuperatorio' ? 'Recup.' : 'Clase';
-  return `${etiqueta} ${numero}`.trim();
+export const tipoCronogramaEtiqueta = (tipo, numero, numeroTipo) => {
+  const etiqueta = tipo === 'examen' ? 'Examen' : tipo === 'recuperatorio' ? 'Recuperatorio' : 'Clase';
+  return `${etiqueta} ${numeroTipo || numero}`.trim();
 };
 
 export const tipoCronogramaColor = (tipo) => {

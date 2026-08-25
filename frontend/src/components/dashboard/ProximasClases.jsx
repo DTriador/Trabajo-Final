@@ -37,9 +37,9 @@ const esFutura = (fecha) => {
   return finDelDia.getTime() > Date.now();
 };
 
-const etiquetaCronograma = (tipo, numero) => {
-  const base = tipo === 'examen' ? 'Examen' : tipo === 'recuperatorio' ? 'Recup.' : 'Clase';
-  return `${base} ${numero}`.trim();
+const etiquetaCronograma = (tipo, numero, numeroTipo) => {
+  const base = tipo === 'examen' ? 'Examen' : tipo === 'recuperatorio' ? 'Recuperatorio' : 'Clase';
+  return `${base} ${numeroTipo || numero}`.trim();
 };
 
 const sumarMes = (fecha) => new Date(fecha.getFullYear(), fecha.getMonth() + 1, 1);
@@ -233,7 +233,7 @@ const ProximasClases = () => {
                 style={{ cursor: 'pointer' }}
                 title="Ver detalles"
               >
-                <div className="proxima-nombre">{etiquetaCronograma(c.tipo, c.numero)}</div>
+                <div className="proxima-nombre">{etiquetaCronograma(c.tipo, c.numero, c.numero_tipo)}</div>
                 <div className="proxima-fecha">
                   📅 {(parseFechaFlexible(fecha) || new Date(fecha)).toLocaleString('es-AR', {
                     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'

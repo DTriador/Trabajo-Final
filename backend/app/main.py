@@ -248,7 +248,8 @@ def enviar_resumen_clases_manana():
                 hora_inicio, hora_fin = _calcular_horario(c.get("fecha_programada"), plan.get("duracion"))
                 materia   = materia_por_curso.get(plan.get("id_curso"), "")
                 escuela   = escuela_por_id.get(plan.get("id_escuela"), "")
-                etiqueta  = _etiqueta_tipo_clase(c.get("tipo"), c.get("numero"))
+                etiqueta  = _etiqueta_tipo_clase(c.get("tipo"), c.get("numero_tipo") or c.get("numero"))
+
                 tema      = c.get("tema_clase") or ""
 
                 linea_horario = f" · {hora_inicio} a {hora_fin} hs" if hora_inicio and hora_fin else ""

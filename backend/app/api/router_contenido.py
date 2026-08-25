@@ -100,13 +100,14 @@ async def generar_examen(
     materia: Optional[str] = Form(None),
     fecha_examen: str = Form(...),
     tipos: str = Form(...),
+    temas: Optional[str] = Form("[]"),
     file: Optional[UploadFile] = File(None),
     id_escuela: Optional[str] = Form(None),
     id_curso: Optional[str] = Form(None),
 ):
     try:
         docx_bytes, nombre_archivo, nombre_materia = await generar_examen_docx(
-            id_docente, materia, fecha_examen, tipos, file, id_escuela, id_curso
+            id_docente, materia, fecha_examen, tipos, temas, file, id_escuela, id_curso
         )
         return await process_and_upload(
             docx_bytes, nombre_archivo, nombre_materia, "docx", id_docente, "RAG_EXAMEN"
@@ -115,6 +116,32 @@ async def generar_examen(
         raise
     except Exception as e:
         print(f"DEBUG ERROR EXAMEN: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/recuperatorio")
+async def generar_recuperatorio(
+    id_docente: str = Form(...),
+    materia: Optional[str] = Form(None),
+    fecha_examen: str = Form(...),
+    tipos: str = Form(...),
+    temas: Optional[str] = Form("[]"),
+    file: Optional[UploadFile] = File(None),
+    id_escuela: Optional[str] = Form(None),
+    id_curso: Optional[str] = Form(None),
+):
+    try:
+        docx_bytes, nombre_archivo, nombre_materia = await generar_examen_docx(
+            id_docente, materia, fecha_examen, tipos, temas, file, id_escuela, id_curso,
+            tipo_evaluacion="Recuperatorio",
+        )
+        return await process_and_upload(
+            docx_bytes, nombre_archivo, nombre_materia, "docx", id_docente, "RAG_RECUPERATORIO"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"DEBUG ERROR RECUPERATORIO: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

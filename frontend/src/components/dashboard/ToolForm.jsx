@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 
 // Herramientas que requieren selección de escuela/materia
 const TOOLS_CON_ESCUELA = [
-  'apunte', 'preguntas', 'examen', 'podcast',
+  'apunte', 'preguntas', 'examen', 'recuperatorio', 'podcast',
   'sopa_letras', 'crucigrama', 'unir_flechas',
 ];
 // Tools que muestran el selector de fuente (bibliografía / PDF)
@@ -25,7 +25,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
     setFormData(prev => ({
       ...prev,
       id_curso: cursoId,
-      ...(tool.id === 'examen' && cursoSel
+      ...((tool.id === 'examen' || tool.id === 'recuperatorio') && cursoSel
         ? { materia_examen: cursoSel.nombre_materia }
         : {}),
     }));
@@ -95,7 +95,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       }
 
       // ── examen ─────────────────────────────────────────────────────────────
-      else if (tool.id === 'examen') {
+      else if (tool.id === 'examen' || tool.id === 'recuperatorio') {
         const tipos = formData.examen_tipos;
         const algunoActivo = Object.values(tipos).some(t => t.activo && t.cantidad > 0);
         if (!algunoActivo) { alert("Marcá al menos una actividad e indicá la cantidad de ítems."); return; }
@@ -104,10 +104,14 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
         payload.append('id_escuela', formData.id_escuela || '');
         payload.append('id_curso',   formData.id_curso   || '');
         payload.append('materia',    formData.materia_examen || '');
+        const esRecuperatorio = tool.id === 'recuperatorio';
+        payload.append('temas', JSON.stringify(
+          esRecuperatorio ? formData.temas_recuperatorio || [] : formData.temas_examen || []
+        ));
         payload.append('fecha_examen', formData.fecha_examen);
         payload.append('tipos', JSON.stringify(tipos));
         if (formData.pdf) payload.append('file', formData.pdf);
-        res = await api.post(`/generar/examen`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
+        res = await api.post(`/generar/${esRecuperatorio ? 'recuperatorio' : 'examen'}`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
 
       // ── podcast ────────────────────────────────────────────────────────────
@@ -289,7 +293,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       {/* ════════════════════════════════════════════════════════════════════
           EXAMEN
          ════════════════════════════════════════════════════════════════════ */}
-      {tool.id === 'examen' && (
+      {(tool.id === 'examen' || tool.id === 'recuperatorio') && (
         <>
           {/* Fecha del examen */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -297,6 +301,20 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
             <input type="date" required className={inputClass}
               value={formData.fecha_examen}
               onChange={e => setFormData({ ...formData, fecha_examen: e.target.value })} />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ color: 'white', fontSize: '1.2rem', marginLeft: '8px' }}>
+              ¿Qué temas entran en el {tool.id === 'recuperatorio' ? 'recuperatorio' : 'examen'}?
+            </label>
+            <textarea required className={inputClass}
+              placeholder="Ingresá uno o varios temas, separados por línea"
+              value={(tool.id === 'recuperatorio' ? formData.temas_recuperatorio : formData.temas_examen || []).join('\n')}
+              onChange={e => setFormData({
+                ...formData,
+                [tool.id === 'recuperatorio' ? 'temas_recuperatorio' : 'temas_examen']:
+                  e.target.value.split('\n').map(tema => tema.trim()).filter(Boolean),
+              })} />
           </div>
 
           {/* Campo materia libre */}

@@ -330,13 +330,25 @@ async def get_mes_completo(id_docente: str, anio: int, mes: int):
                 .order("fecha_programada", desc=False) \
                 .execute()
 
+            numeros_tipo = {}
+            for evento in sorted(cron_res.data or [], key=lambda item: item.get("numero", 0)):
+                tipo_evento = evento.get("tipo") or "clase"
+                id_plan_evento = evento["id_planificacion"]
+                contadores_plan = numeros_tipo.setdefault(id_plan_evento, {})
+                contadores_plan[tipo_evento] = contadores_plan.get(tipo_evento, 0) + 1
+                numeros_tipo[(id_plan_evento, evento.get("id_clase"))] = (
+                    evento.get("numero_tipo") or contadores_plan[tipo_evento]
+                )
+
             for c in (cron_res.data or []):
+                tipo = c.get("tipo") or "clase"
                 plan_info = all_plans.get(c["id_planificacion"], {})
                 hora_inicio, hora_fin = _calcular_horario(
                     c.get("fecha_programada"), plan_info.get("duracion")
                 )
                 cronograma.append({
                     **c,
+                    "numero_tipo": numeros_tipo.get((c["id_planificacion"], c.get("id_clase"))),
                     "nombre_plan":    plan_info.get("nombre_clase", ""),
                     "materia":        materia_por_curso.get(plan_info.get("id_curso"), ""),
                     "nombre_escuela": escuela_por_id.get(plan_info.get("id_escuela"), ""),
