@@ -98,7 +98,11 @@ export default function EscuelasSection({ userId, editando }) {
             setMostrarInputEscuela(false);
         } catch (error) {
             console.error('Error al crear escuela:', error);
-            alert('Hubo un error al agregar la escuela.');
+            const detail = error.response?.data?.detail;
+            const mensaje = typeof detail === 'string'
+                ? detail
+                : detail?.message || error.message || 'No se pudo crear la escuela.';
+            alert(`Error al agregar la escuela: ${mensaje}`);
         }
     };
 

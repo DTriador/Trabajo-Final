@@ -5,6 +5,25 @@ from typing import List, Optional
 
 router = APIRouter(tags=["Gestión de Proyectos"])
 
+
+def _supabase_error_detail(error: Exception) -> dict:
+    response = getattr(error, "response", None)
+    response_data = getattr(response, "data", None)
+    if not isinstance(response_data, dict):
+        response_data = {}
+
+    def value(name: str):
+        return getattr(error, name, None) or response_data.get(name)
+
+    return {
+        "type": type(error).__name__,
+        "message": value("message") or str(error),
+        "code": value("code"),
+        "status": getattr(error, "status", None) or getattr(response, "status_code", None),
+        "details": value("details"),
+        "hint": value("hint"),
+    }
+
 # --- ESQUEMAS ---
 class EscuelaCreate(BaseModel):
     id_docente: str
@@ -57,10 +76,17 @@ async def obtener_escuelas(user_id: str):
 @router.post("/escuelas")
 async def crear_escuela(datos: EscuelaCreate):
     """Permite al docente agregar una nueva institución."""
-    res = supabase.table("escuelas").insert(datos.model_dump()).execute()
-    if not res.data:
-        raise HTTPException(status_code=400, detail="No se pudo crear la escuela")
-    return res.data[0]
+    try:
+        res = supabase.table("escuelas").insert(datos.model_dump()).execute()
+        if not res.data:
+            raise HTTPException(status_code=400, detail="No se pudo crear la escuela")
+        return res.data[0]
+    except HTTPException:
+        raise
+    except Exception as error:
+        detail = _supabase_error_detail(error)
+        print(f"❌ Error al crear escuela [{detail['type']}]: {detail}")
+        raise HTTPException(status_code=400, detail=detail)
 
 @router.get("/cursos/{id_escuela}")
 async def obtener_cursos(id_escuela: str):

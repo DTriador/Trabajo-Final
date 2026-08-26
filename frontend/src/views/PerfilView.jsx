@@ -17,13 +17,14 @@ const PerfilView = ({ onVolver }) => {
         telefono: '',
         email: '',
     });
+    const userId = user?.id || user?.id_docente || user?.sub;
 
     // Cargar datos personales al montar
     useEffect(() => {
-        if (!user?.id) return;
+        if (!userId) return;
         const obtenerDatos = async () => {
             try {
-                const res = await api.get(`/auth/perfil/${user.id}`);
+                const res = await api.get(`/auth/perfil/${userId}`);
                 setFormData({
                     nombre:           res.data.nombre           ?? '',
                     username:         res.data.username         ?? '',
@@ -37,7 +38,7 @@ const PerfilView = ({ onVolver }) => {
             }
         };
         obtenerDatos();
-    }, [user]);
+    }, [userId]);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -53,9 +54,20 @@ const PerfilView = ({ onVolver }) => {
                 datosParaEnviar.fecha_nacimiento = `${anio}-${mes}-${dia}`;
             }
 
-            await api.put(`/auth/perfil/${user.id}`, datosParaEnviar);
+            await api.put(`/auth/perfil/${userId}`, datosParaEnviar);
+            const perfilRes = await api.get(`/auth/perfil/${userId}`);
+            const perfilPersistido = perfilRes.data;
 
-            const usuarioActualizado = { ...user, ...datosParaEnviar };
+            setFormData({
+                nombre:           perfilPersistido.nombre           ?? '',
+                username:         perfilPersistido.username         ?? '',
+                email:            perfilPersistido.email            ?? '',
+                fecha_nacimiento: perfilPersistido.fecha_nacimiento ?? '',
+                ciudad:           perfilPersistido.ciudad           ?? '',
+                telefono:         perfilPersistido.telefono         ?? '',
+            });
+
+            const usuarioActualizado = { ...user, ...perfilPersistido, id: userId };
             localStorage.setItem('user', JSON.stringify(usuarioActualizado));
             setUser(usuarioActualizado);
 
@@ -91,8 +103,6 @@ const PerfilView = ({ onVolver }) => {
             alert(`❌ ${detail}`);
         }
     };
-
-    const userId = user?.id || user?.id_docente || user?.user?.id || user?.sub;
 
     // ─── Render ───────────────────────────────────────────────────────────────
     return (
