@@ -16,8 +16,8 @@ const api = axios.create({
  */
 api.interceptors.request.use((config) => {
   // CORRECCIÓN: Usamos 'token' para ser consistentes con el resto de la app
-  const token = localStorage.getItem('token'); 
-  
+  const token = localStorage.getItem('token');
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -28,14 +28,16 @@ api.interceptors.request.use((config) => {
 
 /**
  * Métodos específicos para el Calendario
- * Ajustados a las rutas definidas en router_planificacion.py
+ * Ajustados a las rutas definidas en router_planificacion.py, montado en
+ * main.py bajo el prefijo /api/v1/generar (mismo prefijo que usa
+ * PlanificacionWizard.jsx para /wizard y /distribuir).
  */
 export const calendarAPI = {
-  // Ajustado a: /api/v1/planificacion/cronograma/{id}
-  getEventos: (idPlanificacion) => api.get(`/planificacion/cronograma/${idPlanificacion}`),
-  
+  // Ajustado a: /api/v1/generar/planificacion/cronograma/{id}
+  getEventos: (idPlanificacion) => api.get(`/generar/planificacion/cronograma/${idPlanificacion}`),
+
   // Estos se usarán cuando implementemos la edición en el service
-  actualizarEvento: (idEvento, data) => api.put(`/planificacion/evento/${idEvento}`, data),
+  actualizarEvento: (idEvento, data) => api.put(`/generar/planificacion/evento/${idEvento}`, data),
   sincronizarGoogle: () => api.post('/externo/google-calendar/sync'),
 };
 

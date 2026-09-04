@@ -15,6 +15,7 @@ from app.api import (
     router_rag,
     router_ai,
     router_planning,
+    router_planificacion,
 )
 from app.api.router_gamificacion_cuadricula import router as gamificacion_cuadricula_router
 from app.api.router_gamificacion_texto      import router as gamificacion_texto_router
@@ -95,7 +96,14 @@ app.include_router(gamificacion_texto_router, prefix="/api/v1/gamificacion",    
 app.include_router(calendario_router,        prefix="/api/v1/calendario",  tags=["Calendario"])
 
 # Planificación académica
-app.include_router(router_planning.router,   prefix="/api/v1/planning",    tags=["Planificación Académica"])
+# router_planning: sistema determinístico original, sin IA (tablas clases/examenes/recuperatorios)
+#   → NO está conectado a ningún componente del frontend actual (código sin uso).
+# router_planificacion: wizard con distribución de temas asistida por IA vía Groq
+#   (tablas planificacion/cronograma_clases/examenes_planificacion).
+#   Montado bajo /api/v1/generar para coincidir con las rutas que llama
+#   PlanificacionWizard.jsx (api.post('/generar/planificacion/wizard', ...), etc.)
+app.include_router(router_planning.router,      prefix="/api/v1/planning",         tags=["Planificación Académica (legacy, sin IA — no usado por el frontend)"])
+app.include_router(router_planificacion.router, prefix="/api/v1/generar",          tags=["Planificación Académica (wizard + IA)"])
 
 # Alumnos
 app.include_router(router_alumnos.router,    prefix="/api/v1/alumnos",     tags=["Alumnos"])
@@ -140,7 +148,7 @@ def revisar_recordatorios():
                         <p><b>📚 Clase:</b> {plan.get('nombre_clase')}</p>
                         <p><b>📌 Tema:</b> {plan.get('tema')}</p>
                         <p><b>📅 Fecha:</b> {plan.get('fecha')}</p>
-                        {f"<p><b>⏱ Duración:</b> {plan.get('duracion')}</p>" if plan.get('duracion') else ""}
+                        {f"<p><b>⏱️ Duración:</b> {plan.get('duracion')}</p>" if plan.get('duracion') else ""}
                     </div>
                     <p style="font-size:12px;color:#999;margin-top:30px;">— Kōkua</p>
                 </div>
@@ -161,11 +169,6 @@ def revisar_recordatorios():
 
 
 # ── Scheduler de resumen diario ("clases de mañana") ──────────────────────────
-# Corre una vez por día a las 18:00 (hora Argentina). Busca TODAS las clases
-# programadas para el día siguiente (cronograma_clases, sea tipo 'clase',
-# 'examen' o 'recuperatorio'), las agrupa por docente, y le manda a cada
-# docente UN solo mail resumen con todas sus clases de mañana.
-
 DIAS_ES_RESUMEN  = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 MESES_ES_RESUMEN = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
                      "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
@@ -197,7 +200,6 @@ def enviar_resumen_clases_manana():
             print("📭 Resumen diario: no hay clases programadas para mañana.")
             return
 
-        # Agrupar por docente (vía planificacion.id_docente)
         por_docente = {}
         for c in clases:
             plan = c.get("planificacion") or {}
@@ -209,7 +211,6 @@ def enviar_resumen_clases_manana():
         if not por_docente:
             return
 
-        # Traer email/nombre de los docentes involucrados
         ids_docentes = list(por_docente.keys())
         docentes_res = (
             supabase.table("docentes")
@@ -219,7 +220,6 @@ def enviar_resumen_clases_manana():
         )
         docentes_map = {d["id_docente"]: d for d in (docentes_res.data or [])}
 
-        # Materia/escuela para enriquecer cada clase (mismo patrón que /calendario/mes)
         ids_curso   = list({c["planificacion"]["id_curso"]   for c in clases if c.get("planificacion", {}).get("id_curso")})
         ids_escuela = list({c["planificacion"]["id_escuela"] for c in clases if c.get("planificacion", {}).get("id_escuela")})
 

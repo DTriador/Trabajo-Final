@@ -4,9 +4,10 @@ import os
 from typing import List
 # Comentado porque no existe app.core.security en tu estructura actual
 # from app.core.security import get_current_user 
-
 from datetime import datetime
 from app.core.database import supabase
+from app.services.rag_service import RAGService  # ← agregado: indexación RAG
+
 router = APIRouter()
 
 # Carpeta base para los PDFs de los docentes en Linux
@@ -21,8 +22,10 @@ async def subir_documento(
     id_docente: str = Form(...),
 ):
     """
-    Acepta uno o varios archivos y los guarda en `storage/pdfs`.
-    Registra cada archivo en la tabla `archivos_generados`.
+    Acepta uno o varios archivos y los guarda en storage/pdfs.
+    Registra cada archivo en la tabla archivos_generados.
+    Si el archivo es un PDF, además lo trocea y vectoriza para RAG,
+    insertando los fragmentos en chunks_rag.
     """
     resultados = []
     try:
@@ -36,15 +39,12 @@ async def subir_documento(
                 tipo_formato = 'bin'
             else:
                 tipo_formato = ext.replace('.', '')
-
             file_path = os.path.join(UPLOAD_DIR, f"{id_docente}_{filename}")
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
-
             tamanio_mb = round(os.path.getsize(file_path) / (1024 * 1024), 3)
             sub_tipo = 'bibliografia' if ext == '.pdf' else 'material'
             categoria = 'BIBLIOGRAFIA' if ext == '.pdf' else 'MATERIAL'
-
             try:
                 supabase.table("archivos_generados").insert({
                     "id_docente":      id_docente,
@@ -62,8 +62,35 @@ async def subir_documento(
                 # no bloquear por fallo en el registro; seguimos con los demás
                 print(f"⚠️ No pude registrar {filename} en BD: {e}")
 
-            resultados.append({"filename": filename, "path": file_path, "size_mb": tamanio_mb})
+            # ── Indexación RAG (solo PDFs) ──────────────────────────────────
+            # Trocea el texto y genera embeddings para poder recuperarlo
+            # luego como contexto en las consultas del asistente conversacional.
+            chunks_indexados = 0
+            if ext == '.pdf':
+                try:
+                    chunks, embeddings = RAGService.process_pdf(file_path)
+                    filas_chunks = [
+                        {
+                            "id_docente":      id_docente,
+                            "contenido_chunk": chunk_texto,
+                            "embedding":       vector,
+                        }
+                        for chunk_texto, vector in zip(chunks, embeddings)
+                    ]
+                    if filas_chunks:
+                        supabase.table("chunks_rag").insert(filas_chunks).execute()
+                        chunks_indexados = len(filas_chunks)
+                except Exception as e:
+                    # no bloquear la subida si falla la indexación: el archivo
+                    # queda guardado igual, solo no estará disponible para RAG
+                    print(f"⚠️ No se pudo indexar {filename} para RAG: {e}")
 
+            resultados.append({
+                "filename": filename,
+                "path": file_path,
+                "size_mb": tamanio_mb,
+                "chunks_indexados": chunks_indexados,
+            })
         return {"status": "success", "uploaded": resultados}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al guardar: {str(e)}")

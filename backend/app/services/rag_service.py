@@ -1,43 +1,64 @@
+# backend/app/services/rag_service.py
+import os
 from PyPDF2 import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-import google.generativeai as genai
-import os
+from google import genai as google_genai
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# Mismo SDK y mismo cliente que rag_orchestrator.py, para no mantener
+# dos formas distintas de hablarle a la API de Gemini.
+_gemini_client = google_genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
 
 class RAGService:
+
     @staticmethod
     def process_pdf(file_path: str):
+        """
+        Extrae el texto de un PDF, lo trocea y genera los embeddings
+        de cada fragmento. Usa el mismo modelo de embeddings que
+        RAGOrchestrator._get_embedding (rag_orchestrator.py) para que
+        los vectores sean comparables en la búsqueda por similitud.
+        """
         # 1. Leer el PDF
         reader = PdfReader(file_path)
         text = ""
         for page in reader.pages:
-            text += page.extract_text()
-            
+            text += page.extract_text() or ""
+
         # 2. Fragmentar el texto (para que quepa en la memoria de la IA)
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
-            chunk_overlap=100
+            chunk_overlap=100,
         )
         chunks = text_splitter.split_text(text)
-        
-        # 3. Generar Embeddings (Vectores)
-        # Usamos el modelo gratuito de Google para esto
-        embeddings = genai.embed_content(
-            model="models/text-embedding-004",
-            content=chunks,
-            task_type="retrieval_document"
+
+        if not chunks:
+            return [], []
+
+        # 3. Generar embeddings — MISMO modelo que usa RAGOrchestrator
+        #    al vectorizar la consulta, para que ambos vivan en el
+        #    mismo espacio vectorial y la búsqueda por similitud sea válida.
+        response = _gemini_client.models.embed_content(
+            model="models/gemini-embedding-001",
+            contents=chunks,
         )
-        
-        return chunks, embeddings['embedding']
-@staticmethod
-async def process_audio(file_path: str):
-    # Gemini 1.5 Flash puede leer audio directamente.
-    # 1. Subir el archivo a Google AI File Manager (Temporal)
-    audio_file = genai.upload_file(path=file_path)
-        
-    # 2. Pedir transcripción y resumen pedagógico
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    response = model.generate_content([audio_file, "Transcribí este audio y extraé los conceptos clave para una clase secundaria."])
-        
-    return response.text
+        vectores = [e.values for e in response.embeddings]
+
+        return chunks, vectores
+
+    @staticmethod
+    async def process_audio(file_path: str):
+        """
+        Transcribe un audio y extrae los conceptos clave usando Gemini.
+        """
+        audio_file = _gemini_client.files.upload(file=file_path)
+
+        response = _gemini_client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                audio_file,
+                "Transcribí este audio y extraé los conceptos clave para una clase secundaria.",
+            ],
+        )
+
+        return response.text
