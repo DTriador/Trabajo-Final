@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from app.services.rag_orchestrator import RAGOrchestrator
 from app.core.database import supabase
 import re
+import json
 
 router = APIRouter()
 
@@ -17,6 +18,9 @@ COMANDOS = {
     "/resumen":   "Resumir tus documentos sobre un tema",
     "/preguntas": "Generar preguntas de repaso sobre un tema",
     "/examen":    "Crear un examen rápido sobre un tema",
+    "/podcast":   "Generar un podcast educativo en audio",
+    "/crucigrama": "Generar un crucigrama",
+    "/sopa":      "Generar una sopa de letras",
     "/ayuda":     "Ver lista de comandos",
 }
 
@@ -30,12 +34,78 @@ def detectar_comando(mensaje: str):
     return (comando, argumento) if comando in COMANDOS else (None, None)
 
 
+def detectar_generacion_natural(mensaje: str):
+    """Reconoce pedidos de archivo escritos sin slash.
+
+    El chat antes solo generaba materiales cuando el usuario conocía los
+    comandos rápidos. Las preguntas normales siempre terminaban en texto,
+    aunque fueran pedidos explícitos de una presentación, apunte o guía.
+    """
+    texto = (mensaje or "").strip()
+    minuscula = texto.lower()
+    tipos = (
+        ("/ppt", ("ppt", "powerpoint", "presentación", "presentacion")),
+        ("/resumen", ("apunte", "resumen")),
+        ("/preguntas", ("preguntas guía", "preguntas guia", "guía de preguntas", "guia de preguntas")),
+        ("/examen", ("examen", "evaluación", "evaluacion")),
+        ("/podcast", ("podcast",)),
+        ("/crucigrama", ("crucigrama",)),
+        ("/sopa", ("sopa de letras", "sopa letras")),
+    )
+    for comando, palabras in tipos:
+        if any(palabra in minuscula for palabra in palabras):
+            match = re.search(r"(?:sobre|acerca de|de)\s+(.+)$", texto, flags=re.IGNORECASE)
+            tema = match.group(1).strip() if match else texto
+            return comando, tema
+    return None, None
+
+
+def _accion_generacion(comando: str, tema: str):
+    parametros = {}
+    if comando == "/preguntas":
+        parametros = {
+            "nombre_guia": f"Guía de preguntas - {tema}",
+            "numero_preguntas": "10",
+        }
+    elif comando == "/examen":
+        parametros = {
+            "fecha_examen": "",
+            "temas": json.dumps([tema]),
+            "tipos": json.dumps({
+                "desarrollo": {"activo": True, "cantidad": 5},
+                "multiple": {"activo": False, "cantidad": 0},
+                "completar": {"activo": False, "cantidad": 0},
+                "verdadero_falso": {"activo": False, "cantidad": 0},
+            }),
+        }
+
+    mapa = {
+        "/ppt":       {"endpoint": "/generar/presentacion", "tipo": "PPT",     "icono": "📊"},
+        "/resumen":   {"endpoint": "/generar/apunte",       "tipo": "Apunte",  "icono": "📄"},
+        "/preguntas": {"endpoint": "/generar/preguntas",    "tipo": "Guía",    "icono": "❓"},
+        "/examen":    {"endpoint": "/generar/examen",       "tipo": "Examen",  "icono": "📝"},
+        "/podcast":   {"endpoint": "/generar/podcast",      "tipo": "Podcast en audio", "icono": "🎧"},
+        "/crucigrama": {"endpoint": "/generar/crucigrama",  "tipo": "Crucigrama", "icono": "➕"},
+        "/sopa":       {"endpoint": "/generar/sopa_letras", "tipo": "Sopa de letras", "icono": "🔠"},
+    }
+    info = mapa[comando]
+    return {
+        "accion": "generar",
+        "endpoint": info["endpoint"],
+        "tipo": info["tipo"],
+        "icono": info["icono"],
+        "parametros": parametros,
+    }
+
+
 @router.post("/chat")
 async def chat_asistente(request: ChatRequest):
     """Asistente Kōkua: responde con RAG sobre los documentos del docente,
     y reconoce comandos rápidos para disparar generaciones."""
     try:
         comando, argumento = detectar_comando(request.mensaje)
+        if comando is None:
+            comando, argumento = detectar_generacion_natural(request.mensaje)
 
         # ===== CASO 1: COMANDO =====
         if comando == "/ayuda":
@@ -43,24 +113,16 @@ async def chat_asistente(request: ChatRequest):
             return {"status": "success", "tipo": "texto",
                     "respuesta": f"Estos son los comandos que entiendo:\n\n{lista}\n\nEjemplo: `/ppt sistema solar`"}
 
-        if comando in ("/ppt", "/resumen", "/preguntas", "/examen"):
+        if comando in ("/ppt", "/resumen", "/preguntas", "/examen", "/podcast", "/crucigrama", "/sopa"):
             if not argumento:
                 return {"status": "success", "tipo": "texto",
                         "respuesta": f"Decime sobre qué tema. Ejemplo: `{comando} fotosíntesis`"}
 
-            # Mapeamos el comando a una acción que el FRONT debe disparar
-            mapa = {
-                "/ppt":       {"accion": "generar", "endpoint": "/generar/presentacion", "tipo": "PPT",     "icono": "📊"},
-                "/resumen":   {"accion": "generar", "endpoint": "/generar/apunte",       "tipo": "Apunte",  "icono": "📄"},
-                "/preguntas": {"accion": "generar", "endpoint": "/generar/preguntas",    "tipo": "Guía",    "icono": "❓"},
-                "/examen":    {"accion": "generar", "endpoint": "/generar/examen",       "tipo": "Examen",  "icono": "📝"},
-            }
-            info = mapa[comando]
+            info = _accion_generacion(comando, argumento)
             return {
                 "status": "success",
                 "tipo": "accion",
-                "accion": info["accion"],
-                "endpoint": info["endpoint"],
+                **info,
                 "tema": argumento,
                 "respuesta": f"{info['icono']} Dale, voy a generar un {info['tipo']} sobre **{argumento}**. Esto puede tardar unos segundos…",
             }

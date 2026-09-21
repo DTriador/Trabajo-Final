@@ -79,9 +79,9 @@
 
 .upload-btn {
   padding: 10px 20px;
-  background: #f59e0b;
-  color: white;
-  border: none;
+  background: #ffffff;
+  color: #1f2937;
+  border: 2px solid #d1d5db;
   border-radius: 8px;
   cursor: pointer;
   font-family: 'Inkfree', cursive;
@@ -90,7 +90,7 @@
 }
 
 .upload-btn:hover {
-  background: #d97706;
+  background: #f3f4f6;
 }
 
 .error-text {

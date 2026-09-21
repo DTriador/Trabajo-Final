@@ -11,14 +11,16 @@ presentación, arman la respuesta final).
 import os
 import re
 import json
-import uuid
 import math
+import base64
+import wave
 from io import BytesIO
 from typing import Optional
 from datetime import datetime
 
 from fastapi import HTTPException, UploadFile
 from pptx import Presentation
+from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
 
@@ -26,7 +28,7 @@ from app.core.database import supabase
 from app.services.ai_service import SYSTEM_PROMPT_PPTX
 from app.services.rag_orchestrator import RAGOrchestrator
 from app.api.contenido_helpers import _datos_escuela_materia, _contexto_biblio, _encabezado_documento
-from app.utils.visual_theme import THEME
+from app.utils.visual_theme import THEME, ppt_rgb
 
 PPT_SLIDE_WIDTH = Inches(13.33)
 PPT_SLIDE_HEIGHT = Inches(7.5)
@@ -85,6 +87,26 @@ def _normalize_title(text: str, fallback: str = "Diapositiva") -> str:
     if len(title) > 80:
         title = title[:77].rstrip() + "..."
     return title
+
+
+def _recuperar_json_anidado(datos):
+    """Recupera JSON que haya quedado guardado dentro de ``resumen``.
+
+    Es compatible con respuestas producidas por versiones anteriores del
+    parser, que envolvían una respuesta incompleta en ``resumen``.
+    """
+    if not isinstance(datos, dict):
+        return datos
+    for clave in ("_raw", "resumen"):
+        valor = datos.get(clave)
+        if not isinstance(valor, str) or not valor.strip():
+            continue
+        recuperado = RAGOrchestrator._parse_json(valor)
+        if isinstance(recuperado, dict) and any(
+            key in recuperado for key in ("secciones", "preguntas", "slides", "segmentos")
+        ):
+            return recuperado
+    return datos
 
 
 def _normalize_ppt_slide_payload(slides):
@@ -273,6 +295,9 @@ async def generar_apunte_docx(
             f"{prompt_base}\n\n{ctx}", SYSTEM_PROMPT_APUNTE, id_docente=id_docente
         )
 
+    datos_json = _recuperar_json_anidado(datos_json)
+    if not isinstance(datos_json, dict):
+        datos_json = {}
     doc = Document()
     _encabezado_documento(doc, "Apunte", nombre_materia, tema, nombre_escuela, fecha_str=fecha)
 
@@ -297,6 +322,23 @@ async def generar_apunte_docx(
     if datos_json.get("conclusion"):
         doc.add_heading("Conclusión", level=1)
         doc.add_paragraph(datos_json["conclusion"])
+
+    # Si el modelo devolvió texto pero no llegó a cerrar el JSON, no entregar
+    # un DOCX que contenga solamente el encabezado institucional.
+    contenido_generado = (
+        datos_json.get("introduccion")
+        or datos_json.get("secciones")
+        or datos_json.get("glosario")
+        or datos_json.get("conclusion")
+    )
+    if not contenido_generado:
+        texto_rescatado = (
+            datos_json.get("_raw")
+            or datos_json.get("resumen")
+            or f"Contenido de estudio sobre {tema}."
+        )
+        doc.add_heading("Desarrollo", level=1)
+        doc.add_paragraph(str(texto_rescatado))
 
     buffer = BytesIO()
     doc.save(buffer)
@@ -365,6 +407,7 @@ async def generar_preguntas_docx(
         )
 
     # Normalización defensiva
+    datos_json = _recuperar_json_anidado(datos_json)
     if isinstance(datos_json, str):
         txt = datos_json.strip()
         m = re.search(r"\{.*\}", txt, re.DOTALL)
@@ -379,6 +422,29 @@ async def generar_preguntas_docx(
     preguntas    = datos_json.get("preguntas") or datos_json.get("questions") or datos_json.get("items") or []
     titulo       = datos_json.get("titulo") or datos_json.get("title") or nombre_guia
     introduccion = datos_json.get("introduccion") or datos_json.get("introduction") or ""
+
+    # Recuperación adicional para respuestas parcialmente válidas que
+    # contienen algunos objetos antes de truncarse.
+    if not preguntas:
+        raw = datos_json.get("_raw") or datos_json.get("resumen") or ""
+        if isinstance(raw, str):
+            encontrados = re.findall(
+                r'"(?:pregunta|question|texto)"\s*:\s*"((?:\\.|[^"\\])*)"',
+                raw,
+                flags=re.DOTALL,
+            )
+            preguntas = []
+            for i, valor in enumerate(encontrados, start=1):
+                try:
+                    texto_pregunta = json.loads(f'"{valor}"')
+                except Exception:
+                    texto_pregunta = valor.replace('\\"', '"')
+                if texto_pregunta.strip():
+                    preguntas.append({
+                        "numero": i,
+                        "pregunta": texto_pregunta.strip(),
+                        "respuesta_sugerida": "",
+                    })
 
     if not preguntas:
         raise HTTPException(
@@ -654,6 +720,142 @@ async def generar_podcast_docx(
     return buffer.getvalue(), nombre_archivo
 
 
+async def generar_podcast_audio(
+    tema: str,
+    id_docente: str,
+    file: Optional[UploadFile],
+    id_escuela: Optional[str],
+    id_curso: Optional[str],
+    fecha: Optional[str],
+):
+    """Genera un episodio de audio WAV usando Gemini TTS.
+
+    El sistema anterior solo generaba el guion dentro de un DOCX. El guion
+    sigue siendo producido por el LLM, pero ahora se transforma en audio
+    hablado por el modelo TTS de Gemini y se sube como archivo reproducible.
+    """
+    nombre_escuela, nombre_materia, division, contenido_minimo, bibliografia = \
+        _datos_escuela_materia(id_escuela, id_curso)
+
+    system_prompt = """
+    Sos un guionista de podcast educativo al estilo de una conversación clara
+    y entretenida entre un experto y un estudiante. Devolvé EXCLUSIVAMENTE un
+    JSON válido con esta estructura:
+    {
+      "episodio_titulo": "Título",
+      "introduccion": "Introducción breve",
+      "guion": [
+        {"locutor": "Alex", "texto": "Texto hablado"},
+        {"locutor": "Sam", "texto": "Pregunta o comentario del estudiante"}
+      ],
+      "conclusion": "Cierre"
+    }
+    Generá un guion completo, natural y pedagógico, con al menos 8
+    intervenciones alternadas. No incluyas indicaciones de sonido.
+    """
+    prompt_base = (
+        f"Generá un podcast educativo sobre el tema '{tema}' "
+        f"para la materia '{nombre_materia}' de '{nombre_escuela}'."
+    )
+
+    if file is not None:
+        pdf_content = await file.read()
+        if not pdf_content:
+            raise HTTPException(status_code=400, detail="El PDF está vacío.")
+        datos_json = await RAGOrchestrator.get_context_from_file_and_generate(
+            pdf_content, prompt_base, system_prompt, id_docente=id_docente
+        )
+    else:
+        ctx = _contexto_biblio(contenido_minimo, bibliografia)
+        datos_json = await RAGOrchestrator.get_context_and_generate(
+            f"{prompt_base}\n\n{ctx}", system_prompt, id_docente=id_docente
+        )
+
+    datos_json = _recuperar_json_anidado(datos_json)
+    if not isinstance(datos_json, dict):
+        datos_json = {}
+
+    lineas = []
+    if datos_json.get("introduccion"):
+        lineas.append(str(datos_json["introduccion"]))
+    guion = datos_json.get("guion") or datos_json.get("segmentos") or []
+    for parte in guion:
+        if isinstance(parte, dict):
+            locutor = parte.get("locutor") or parte.get("tipo") or ""
+            texto = parte.get("texto") or parte.get("guion") or ""
+            if texto:
+                lineas.append(f"{locutor}: {texto}" if locutor else str(texto))
+        elif parte:
+            lineas.append(str(parte))
+    if datos_json.get("conclusion"):
+        lineas.append(str(datos_json["conclusion"]))
+
+    guion_texto = "\n\n".join(lineas).strip()
+    if not guion_texto:
+        raise HTTPException(
+            status_code=500,
+            detail=f"El LLM no devolvió un guion de podcast. Respuesta cruda: {str(datos_json)[:300]}",
+        )
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        cliente = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        modelo_tts = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
+        respuesta = cliente.models.generate_content(
+            model=modelo_tts,
+            contents=guion_texto[:30000],
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=os.getenv("GEMINI_TTS_VOICE", "Kore")
+                        )
+                    )
+                ),
+            ),
+        )
+
+        audio_data = None
+        for candidato in getattr(respuesta, "candidates", []) or []:
+            contenido = getattr(candidato, "content", None)
+            for parte in getattr(contenido, "parts", []) or []:
+                inline = getattr(parte, "inline_data", None)
+                if inline is not None and getattr(inline, "data", None):
+                    audio_data = inline.data
+                    break
+            if audio_data:
+                break
+
+        if isinstance(audio_data, str):
+            audio_data = base64.b64decode(audio_data)
+        if not audio_data:
+            raise RuntimeError("Gemini TTS no devolvió datos de audio.")
+
+        # Gemini entrega PCM lineal en la mayoría de las respuestas TTS. Lo
+        # envolvemos en WAV para que el navegador y Supabase lo reproduzcan.
+        if not bytes(audio_data).startswith(b"RIFF"):
+            wav = BytesIO()
+            with wave.open(wav, "wb") as salida:
+                salida.setnchannels(1)
+                salida.setsampwidth(2)
+                salida.setframerate(24000)
+                salida.writeframes(bytes(audio_data))
+            audio_data = wav.getvalue()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"No se pudo generar el audio del podcast: {e}",
+        )
+
+    nombre_archivo = f"Podcast_{nombre_escuela}_{nombre_materia}".replace(" ", "_")
+    return audio_data, nombre_archivo
+
+
 # ── presentacion ──────────────────────────────────────────────────────────────
 
 async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[UploadFile]):
@@ -668,12 +870,10 @@ async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[U
         try:
             from pypdf import PdfReader
             pdf_bytes = await file.read()
-            temp_path = f"/tmp/{uuid.uuid4()}.pdf"
-            with open(temp_path, "wb") as f:
-                f.write(pdf_bytes)
-            reader = PdfReader(temp_path)
+            if not pdf_bytes:
+                raise ValueError("El PDF está vacío.")
+            reader = PdfReader(BytesIO(pdf_bytes))
             contenido_pdf = "\n".join([p.extract_text() or "" for p in reader.pages])
-            os.remove(temp_path)
         except Exception as e:
             print(f"⚠️ No pude leer el PDF: {e}")
             contenido_pdf = ""
@@ -685,9 +885,11 @@ async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[U
     )
 
     if contenido_pdf:
-        datos_json = await RAGOrchestrator.get_context_from_file_and_generate(
-            file_content=contenido_pdf.encode("utf-8", errors="ignore"),
-            user_prompt=prompt_base,
+        # El PDF ya fue convertido a texto. No volver a enviarlo al extractor
+        # PDF, porque eso intentaba interpretar texto plano como si fueran
+        # bytes de un PDF y terminaba perdiendo todo el contexto.
+        datos_json = await RAGOrchestrator.get_context_and_generate(
+            user_prompt=f"{prompt_base}\n\nCONTENIDO DEL PDF:\n{contenido_pdf}",
             system_instruction=SYSTEM_PROMPT_PPTX,
             id_docente=id_docente,
         )
@@ -735,7 +937,9 @@ async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[U
     titulo_slide = prs.slides.add_slide(prs.slide_layouts[6])
     background = titulo_slide.background.fill
     background.solid()
-    background.fore_color.rgb = 0xF5F7FF
+    # python-pptx no acepta enteros para RGB: necesita una instancia de
+    # RGBColor (o una tupla convertida a RGBColor).
+    background.fore_color.rgb = RGBColor(*ppt_rgb(THEME["ppt"]["background"]))
 
     title_box = titulo_slide.shapes.add_textbox(PPT_MARGIN_LEFT, PPT_MARGIN_TOP, prs.slide_width - PPT_MARGIN_LEFT - PPT_MARGIN_RIGHT, Inches(0.7))
     _add_textbox_text(title_box, titulo_presentacion, PPT_TITLE_FONT_SIZE, bold=True)

@@ -188,6 +188,9 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       if (res?.data?.status === "success") {
         alert(`¡Listo! El archivo se ha guardado en tu biblioteca.`);
         if (res.data.download_url) window.open(res.data.download_url, '_blank');
+        if (res.data.download_url_respuestas) {
+          window.open(res.data.download_url_respuestas, '_blank');
+        }
       }
     } catch (err) {
       console.error("Error en el pipeline de generación:", err);
@@ -241,7 +244,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
         Subir un PDF como base
       </label>
       {formData.fuente_contenido === 'pdf' && (
-        <label className="cursor-pointer bg-white/10 border-2 border-white/20 px-6 py-3 rounded-xl text-lg text-white text-center" style={{ marginTop: '4px' }}>
+        <label className="cursor-pointer px-6 py-3 rounded-xl text-lg text-center" style={{ marginTop: '4px', backgroundColor: '#ffffff', border: '2px solid #d1d5db', color: '#1f2937' }}>
           {formData.pdf ? `📎 ${formData.pdf.name}` : '📤 Seleccionar PDF...'}
           <input type="file" style={{ display: 'none' }} accept=".pdf"
             onChange={e => setFormData({ ...formData, pdf: e.target.files[0] })} />
@@ -329,7 +332,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
           </div>
 
           {/* PDF base (opcional) */}
-          <label className="cursor-pointer bg-white/10 border-2 border-white/20 px-6 py-3 rounded-xl text-lg text-white text-center">
+          <label className="cursor-pointer px-6 py-3 rounded-xl text-lg text-center" style={{ backgroundColor: '#ffffff', border: '2px solid #d1d5db', color: '#1f2937' }}>
             {formData.pdf ? `📎 ${formData.pdf.name}` : '📤 Subir PDF base del examen (opcional)'}
             <input type="file" style={{ display: 'none' }} accept=".pdf"
               onChange={e => setFormData({ ...formData, pdf: e.target.files[0] })} />
@@ -395,7 +398,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       {tool.id === 'podcast' && (
         <>
           <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '1.1rem', margin: 0 }}>
-            Kōkua va a generar un guión de podcast educativo listo para grabar.
+            Kōkua va a generar un podcast educativo en formato de audio.
             Podés usar la bibliografía de la materia o subir un PDF propio.
           </p>
           <FuenteContenido />
@@ -527,7 +530,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
           />
           {/* PDF inline solo para planificacion y presentacion */}
           {['planificacion', 'presentacion'].includes(tool.id) && (
-            <label className="cursor-pointer bg-black text-black border-2 border-black px-6 py-3 rounded-xl text-lg font-bold whitespace-nowrap">
+            <label className="cursor-pointer px-6 py-3 rounded-xl text-lg font-bold whitespace-nowrap" style={{ backgroundColor: '#ffffff', color: '#1f2937', border: '2px solid #d1d5db' }}>
               📎 PDF
               <input type="file" style={{ display: 'none' }} accept=".pdf"
                 onChange={e => setFormData({ ...formData, pdf: e.target.files[0] })} />

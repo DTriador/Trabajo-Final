@@ -1,4 +1,5 @@
 import io
+import mimetypes
 import pandas as pd
 from pptx import Presentation
 from docx import Document
@@ -109,7 +110,10 @@ class FileEngine:
             supabase.storage.from_("documentos_docentes").upload(
                 path=path_on_storage,
                 file=contenido,
-                file_options={"content-type": "application/octet-stream", "x-upsert": "true"}
+                file_options={
+                    "content-type": mimetypes.guess_type(file_name)[0] or "application/octet-stream",
+                    "x-upsert": "true",
+                }
             )
 
             # 🔑 Generar URL firmada válida por 7 días (604800 segundos)

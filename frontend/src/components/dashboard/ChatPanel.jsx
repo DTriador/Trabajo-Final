@@ -2,11 +2,13 @@
 import React, { useState } from 'react';
 import api from '../../api/axios';
 import FileUploadZone from './FileUploadZone';
+import { useAuth } from '../../context/AuthContext';
 
 const ChatPanel = () => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [uploading, setUploading] = useState(false);
+  const { user } = useAuth();
 
   const handleSendMessage = async () => {
     if (!input.trim()) return;
@@ -17,8 +19,14 @@ const ChatPanel = () => {
     setInput('');
 
     try {
-      // Aquí conectarías con tu endpoint de FastAPI para la IA
-      // const res = await api.post('/chat', { query: input });
+      const res = await api.post('/asistente/chat', {
+        mensaje: input,
+        id_docente: user?.id || user?.uid,
+      });
+      setMessages(prev => [...prev, {
+        sender: 'ai',
+        text: res.data.respuesta || 'No recibí una respuesta.',
+      }]);
     } catch (err) {
       console.error(err);
     }
@@ -29,7 +37,8 @@ const ChatPanel = () => {
     setUploading(true);
 
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('files', file);
+    formData.append('id_docente', user?.id || user?.uid || '');
 
     try {
       await api.post('/documentos/subir', formData, {
@@ -41,7 +50,8 @@ const ChatPanel = () => {
         text: ` Procesado con éxito: "${file.name}". Ya podés hacerme preguntas.` 
       }]);
     } catch (err) {
-      setMessages(prev => [...prev, { sender: 'ai', text: `❌ Error al procesar ${file.name}` }]);
+      const detalle = err.response?.data?.detail || err.message || 'Error desconocido';
+      setMessages(prev => [...prev, { sender: 'ai', text: `❌ Error al procesar ${file.name}: ${detalle}` }]);
     } finally {
       setUploading(false);
     }

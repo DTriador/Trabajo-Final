@@ -14,7 +14,7 @@ from app.utils.storage import construir_ruta_storage
 from app.api.contenido_helpers import _datos_escuela_materia, _contexto_biblio, _encabezado_documento
 from app.api.contenido_generadores import (
     generar_apunte_docx, generar_preguntas_docx, generar_examen_docx,
-    generar_podcast_docx, generar_presentacion_pptx,
+    generar_podcast_docx, generar_podcast_audio, generar_presentacion_pptx,
 )
 from app.api.contenido_pdf_export import (
     ExportarPDFRequest, _detectar_conversor, convertir_docx_url_a_pdf,
@@ -157,11 +157,11 @@ async def generar_podcast(
     fecha: Optional[str] = Form(None),
 ):
     try:
-        docx_bytes, nombre_archivo = await generar_podcast_docx(
+        audio_bytes, nombre_archivo = await generar_podcast_audio(
             tema, id_docente, file, id_escuela, id_curso, fecha
         )
         return await process_and_upload(
-            docx_bytes, nombre_archivo, tema, "docx", id_docente, "RAG_PODCAST"
+            audio_bytes, nombre_archivo, tema, "wav", id_docente, "RAG_PODCAST_AUDIO"
         )
     except HTTPException:
         raise

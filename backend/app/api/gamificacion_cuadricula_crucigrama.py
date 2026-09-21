@@ -79,7 +79,7 @@ async def generar_crucigrama(
         if not horizontales and not verticales:
             raise HTTPException(status_code=400, detail="No se pudo armar el crucigrama. Probá con otro tema o PDF.")
 
-        pdf_bytes = _renderizar_pdf_crucigrama(
+        pdf_bytes_alumno = _renderizar_pdf_crucigrama(
             tema=tema or "Crucigrama",
             grilla=grilla,
             horizontales=horizontales,
@@ -89,12 +89,33 @@ async def generar_crucigrama(
             division=division,
             fecha=fecha,
             nombre_alumno=nombre_alumno,
+            mostrar_respuestas=False,
+        )
+        pdf_bytes_docente = _renderizar_pdf_crucigrama(
+            tema=tema or "Crucigrama",
+            grilla=grilla,
+            horizontales=horizontales,
+            verticales=verticales,
+            nombre_escuela=nombre_escuela,
+            nombre_materia=nombre_materia,
+            division=division,
+            fecha=fecha,
+            nombre_alumno=nombre_alumno,
+            mostrar_respuestas=True,
         )
 
-        nombre_archivo = f"Crucigrama_{nombre_escuela}_{nombre_materia}".replace(" ", "_")
-        return await process_and_upload(
-            pdf_bytes, nombre_archivo, tema, "pdf", id_docente, "CRUCIGRAMA",
+        nombre_base = f"Crucigrama_{nombre_escuela}_{nombre_materia}".replace(" ", "_")
+        resultado_alumno = await process_and_upload(
+            pdf_bytes_alumno, f"{nombre_base}_Alumno", tema, "pdf", id_docente, "CRUCIGRAMA_ALUMNO",
         )
+        resultado_docente = await process_and_upload(
+            pdf_bytes_docente, f"{nombre_base}_Respuestas", tema, "pdf", id_docente, "CRUCIGRAMA_DOCENTE",
+        )
+        return {
+            **resultado_alumno,
+            "download_url_respuestas": resultado_docente.get("download_url"),
+            "nombre_respuestas": resultado_docente.get("nombre"),
+        }
 
     except HTTPException:
         raise
@@ -194,7 +215,8 @@ def _valida_cruce(grilla, w, r, c, dr, dc, N):
 # ── render del PDF ───────────────────────────────────────────────────────────
 
 def _renderizar_pdf_crucigrama(tema, grilla, horizontales, verticales,
-                                nombre_escuela, nombre_materia, division, fecha, nombre_alumno):
+                                nombre_escuela, nombre_materia, division, fecha, nombre_alumno,
+                                mostrar_respuestas=True):
     buf = io.BytesIO()
     c = pdfcanvas.Canvas(buf, pagesize=A4)
     width, height = A4
@@ -233,9 +255,10 @@ def _renderizar_pdf_crucigrama(tema, grilla, horizontales, verticales,
             else:
                 c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["grid_fill"]))
                 c.rect(x, y, cell, cell, stroke=1, fill=1)
-                c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["text"]))
-                c.setFont("Helvetica-Bold", max(7, int(cell * 0.48)))
-                c.drawCentredString(x + cell/2, y + (cell - max(7, int(cell * 0.48))) / 2 + 1, grilla[r][col])
+                if mostrar_respuestas:
+                    c.setFillColorRGB(*reportlab_rgb(THEME["colors"]["text"]))
+                    c.setFont("Helvetica-Bold", max(7, int(cell * 0.48)))
+                    c.drawCentredString(x + cell/2, y + (cell - max(7, int(cell * 0.48))) / 2 + 1, grilla[r][col])
                 if (r, col) in nums:
                     c.setFont("Helvetica", num_size)
                     c.drawString(x + 1.5, y + cell - num_size - 1, str(nums[(r, col)]))
@@ -260,5 +283,5 @@ def _renderizar_pdf_crucigrama(tema, grilla, horizontales, verticales,
 
     _seccion("Horizontales:", horizontales)
     _seccion("Verticales:", verticales)
-    c.showPage(); c.save()
+    c.save()
     return buf.getvalue()

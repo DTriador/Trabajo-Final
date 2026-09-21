@@ -75,6 +75,17 @@ class RAGOrchestrator:
 
         errores = []
 
+        espera_json = any(
+            marca in prompt.upper()
+            for marca in (
+                "JSON VÁLIDO",
+                "JSON VALIDO",
+                "EXCLUSIVAMENTE CON UN JSON",
+                "FORMATO JSON",
+                "JSON A DEVOLVER",
+            )
+        )
+
         for modelo in modelos_a_probar:
 
             try:
@@ -83,16 +94,31 @@ class RAGOrchestrator:
                     f"{modelo}..."
                 )
 
-                response = groq_client.chat.completions.create(
-                    model=modelo,
-                    messages=[
+                request = {
+                    "model": modelo,
+                    "messages": [
                         {
                             "role": "user",
                             "content": prompt
                         }
                     ],
-                    max_tokens=1500,
-                )
+                    # 1500 tokens cortaba los apuntes, las guías y las
+                    # presentaciones antes de cerrar el JSON.
+                    "max_tokens": 5000,
+                }
+                if espera_json:
+                    request["response_format"] = {"type": "json_object"}
+
+                try:
+                    response = groq_client.chat.completions.create(**request)
+                except Exception:
+                    # Algunos modelos/proxies no exponen response_format.
+                    # Reintentamos el mismo modelo sin esa opción antes de
+                    # pasar al siguiente.
+                    if "response_format" not in request:
+                        raise
+                    request.pop("response_format", None)
+                    response = groq_client.chat.completions.create(**request)
 
                 print(f"✅ ¡Éxito con el modelo {modelo}!")
 
@@ -128,14 +154,42 @@ class RAGOrchestrator:
     # =========================
     @staticmethod
     def _parse_json(text: str):
+        """Parsea JSON aunque el modelo agregue markdown o texto alrededor.
+
+        El parser anterior convertía cualquier error en
+        ``{"resumen": ..., "palabras": []}``. Eso hacía que los generadores
+        parecieran funcionar, pero luego no encontraran ``secciones`` o
+        ``preguntas`` y devolvieran documentos vacíos. Conservamos el texto
+        crudo para que cada generador pueda aplicar su fallback.
+        """
+        if isinstance(text, (dict, list)):
+            return text
+        if not isinstance(text, str):
+            return {"_raw": str(text or "")}
+
+        limpio = text.strip()
+        limpio = re.sub(r"^```(?:json)?\s*", "", limpio, flags=re.IGNORECASE)
+        limpio = re.sub(r"\s*```$", "", limpio).strip()
+
         try:
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            if match:
-                return json.loads(match.group())
-            return json.loads(text)
-        except Exception as e:
-            print(f"Error parseando JSON: {e}")
-            return {"resumen": text[:100], "palabras": []}
+            return json.loads(limpio)
+        except Exception:
+            pass
+
+        # Extrae el primer objeto/lista JSON completo, sin usar una expresión
+        # greedy que mezcle dos objetos o falle con llaves dentro de strings.
+        decoder = json.JSONDecoder()
+        for indice, caracter in enumerate(limpio):
+            if caracter not in "{[":
+                continue
+            try:
+                valor, _ = decoder.raw_decode(limpio[indice:])
+                return valor
+            except Exception:
+                continue
+
+        print("Error parseando JSON: la respuesta quedó incompleta o no era JSON")
+        return {"_raw": limpio}
 
     # =========================
     # WITH FILE (RAG)

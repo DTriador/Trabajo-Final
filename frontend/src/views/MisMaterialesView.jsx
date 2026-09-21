@@ -9,6 +9,7 @@ const ICONOS = {
   pptx: '📊', ppt: '📊',
   docx: '📄', doc: '📄',
   pdf: '📕',
+  wav: '🎧', mp3: '🎧', m4a: '🎧',
   xlsx: '📈', xls: '📈',
   default: '📎'
 };
@@ -142,7 +143,7 @@ const MisMaterialesView = ({ onVolver }) => {
     try {
       if (!userId) { alert('No se encontró el ID del docente.'); return; }
       const formData = new FormData();
-      formData.append('file', file);
+       formData.append('files', file);
       formData.append('id_docente', userId);
       await api.post('/documentos/subir', formData, { headers: { 'Content-Type': undefined } });
       const res = await api.get(`/proyectos/archivos/${userId}`);

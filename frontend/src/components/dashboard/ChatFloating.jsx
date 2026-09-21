@@ -8,6 +8,7 @@ const COMANDOS_RAPIDOS = [
     { cmd: '/resumen',   label: '📄 Resumen',   hint: 'de…' },
     { cmd: '/preguntas', label: '❓ Preguntas', hint: 'sobre…' },
     { cmd: '/examen',    label: '📝 Examen',    hint: 'de…' },
+    { cmd: '/podcast',   label: '🎧 Podcast',   hint: 'sobre…' },
 ];
 
 const ChatFloating = () => {
@@ -41,7 +42,7 @@ const ChatFloating = () => {
         if (!file) return;
         setIsUploading(true);
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('files', file);
         formData.append('id_docente', user?.id || user?.uid);
         try {
             await api.post('/documentos/subir', formData, {
@@ -53,7 +54,8 @@ const ChatFloating = () => {
             }]);
         } catch (err) {
             console.error("Error al subir archivo:", err);
-            setMessages(prev => [...prev, { sender: 'bot', text: '❌ Error al procesar el documento.' }]);
+            const detalle = err.response?.data?.detail || err.message || 'Error desconocido';
+            setMessages(prev => [...prev, { sender: 'bot', text: `❌ Error al procesar el documento: ${detalle}` }]);
         } finally {
             setIsUploading(false);
             e.target.value = '';
@@ -61,13 +63,16 @@ const ChatFloating = () => {
     };
 
     // Ejecuta una acción de generación que vino desde el backend
-    const ejecutarAccion = async (accion, tema) => {
+    const ejecutarAccion = async (accion, tema, parametros = {}) => {
         setGenerando(true);
         try {
             const userId = user?.id || user?.uid;
             const payload = new FormData();
             payload.append('tema', tema);
             payload.append('id_docente', userId);
+            Object.entries(parametros).forEach(([clave, valor]) => {
+                payload.append(clave, valor);
+            });
 
             const res = await api.post(accion.endpoint, payload, {
                 headers: { 'Content-Type': 'multipart/form-data' }
@@ -112,7 +117,8 @@ const ChatFloating = () => {
             if (res.data.tipo === 'accion' && res.data.endpoint) {
                 await ejecutarAccion(
                     { endpoint: res.data.endpoint },
-                    res.data.tema
+                    res.data.tema,
+                    res.data.parametros || {}
                 );
             }
         } catch (err) {

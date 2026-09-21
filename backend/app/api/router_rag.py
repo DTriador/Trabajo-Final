@@ -18,8 +18,10 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @router.post("/subir")
 async def subir_documento(
-    files: List[UploadFile] = File(...),
+    files: List[UploadFile] | None = File(None),
     id_docente: str = Form(...),
+    # Compatibilidad con el cliente antiguo, que enviaba `file` en singular.
+    file: UploadFile | None = File(None),
 ):
     """
     Acepta uno o varios archivos y los guarda en storage/pdfs.
@@ -29,7 +31,13 @@ async def subir_documento(
     """
     resultados = []
     try:
-        for file in files:
+        archivos = list(files or [])
+        if file is not None:
+            archivos.append(file)
+        if not archivos:
+            raise HTTPException(status_code=400, detail="Seleccioná al menos un archivo PDF.")
+
+        for file in archivos:
             filename = file.filename or 'file'
             ext = os.path.splitext(filename)[1].lower()
             # permitir varios tipos comunes además de PDF
