@@ -5,6 +5,7 @@ import proyectosService from '../services/proyectosService';
 import api from '../api/axios';
 import TablaCalificaciones from '../components/alumnos/TablaCalificaciones';
 import TablaAsistencia     from '../components/alumnos/TablaAsistencia';
+import ImportarAlumnosExcel from '../components/alumnos/ImportarAlumnosExcel';
 
 // ── Estilos compartidos ───────────────────────────────────────────────────────
 const BTN = {
@@ -60,9 +61,9 @@ const INPUT_TOOLBAR = {
 
 // ── Pestañas disponibles ──────────────────────────────────────────────────────
 const TABS = [
-  { id: 'alumnos',          label: '👨‍🎓 Alumnos' },
-  { id: 'calificaciones',   label: '📊 Calificaciones' },
-  { id: 'asistencia',       label: '📅 Asistencia' },
+  { id: 'alumnos',          label: 'Alumnos' },
+  { id: 'calificaciones',   label: 'Calificaciones' },
+  { id: 'asistencia',       label: 'Asistencia' },
 ];
 
 // ── Componente principal ──────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ const AlumnosView = ({ onVolver }) => {
   const [escuelaNueva, setEscuelaNueva] = useState('');
   const [escuelaImportacion, setEscuelaImportacion] = useState('');
   const [alumnoEnEdicion, setAlumnoEnEdicion] = useState(null);
+  const [errorCarga, setErrorCarga] = useState('');
 
   const userId = user?.id || user?.id_docente || user?.user?.id;
 
@@ -89,7 +91,10 @@ const AlumnosView = ({ onVolver }) => {
     try {
       const res = await api.get(`/alumnos/${userId}`);
       setAlumnos(res.data || []);
-    } catch (e) { console.error('Error cargando alumnos:', e); }
+    } catch (e) {
+      console.error('Error cargando alumnos:', e);
+      setErrorCarga(e.response?.data?.detail || 'No se pudieron cargar los alumnos.');
+    }
     finally { setCargando(false); }
   };
 
@@ -152,22 +157,6 @@ const AlumnosView = ({ onVolver }) => {
     } catch (e) { alert(`Error: ${e.response?.data?.detail || e.message}`); }
   };
 
-  const handleImportarCSV = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!escuelaImportacion) { alert('Seleccioná el colegio antes de importar'); return; }
-    if (!window.confirm(`¿Importar desde "${file.name}"?\n\nColumnas requeridas: nombre, apellido, email`)) return;
-    try {
-      const fd = new FormData();
-      fd.append('id_docente', userId);
-      fd.append('id_escuela', escuelaImportacion);
-      fd.append('file', file);
-      const res = await api.post('/alumnos/importar-csv', fd);
-      alert(`✅ ${res.data.creados} alumnos importados${res.data.errores.length ? `\n⚠️ ${res.data.errores.length} errores` : ''}`);
-      cargar();
-    } catch (err) { alert(`Error: ${err.response?.data?.detail || err.message}`); }
-  };
-
   const filtrados = alumnos.filter(a =>
     `${a.nombre} ${a.apellido || ''} ${a.email}`.toLowerCase().includes(busqueda.toLowerCase())
   );
@@ -195,7 +184,7 @@ const AlumnosView = ({ onVolver }) => {
     })).filter(grupo => grupo.alumnos.length > 0);
 
   if (cargando) return (
-    <p style={{ padding: 40, color: '#fff', fontSize: '1.5rem' }}>Cargando alumnos...</p>
+    <div role="status" style={{ padding: 40, color: '#fff', fontSize: '1.5rem' }}>Cargando alumnos…</div>
   );
 
   return (
@@ -214,9 +203,9 @@ const AlumnosView = ({ onVolver }) => {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '2px dashed #b45309', paddingBottom: 12 }}>
         <h1 style={{ fontFamily: "'KG Midnight Memories', cursive", fontSize: '2.5rem', color: '#1e3a8a', margin: 0 }}>
-          👨‍🎓 Mis Alumnos
+          Mis Alumnos
         </h1>
-        <button onClick={onVolver} style={BTN.volver}>⬅ Volver</button>
+         <button onClick={onVolver} style={BTN.volver}>Volver</button>
       </div>
 
       {/* ── PESTAÑAS ── */}
@@ -250,22 +239,35 @@ const AlumnosView = ({ onVolver }) => {
           {/* Toolbar */}
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
             <input
-              type="text" placeholder="🔎 Buscar alumno..."
+               type="text" placeholder="Buscar alumno por nombre o email"
               value={busqueda} onChange={e => setBusqueda(e.target.value)}
               style={INPUT_TOOLBAR}
             />
             <button onClick={() => { setMostrarForm(!mostrarForm); cancelarEdicion(); }} style={BTN.add}>
-              {mostrarForm ? '✖ Cancelar' : '➕ Agregar'}
+              {mostrarForm ? 'Cancelar' : 'Agregar'}
             </button>
-            <label style={{ ...BTN.csv, display: 'inline-block' }}>
-              📁 Importar CSV
-              <input type="file" accept=".csv" onChange={handleImportarCSV} style={{ display: 'none' }} />
-            </label>
-                      <select value={escuelaImportacion} onChange={e => setEscuelaImportacion(e.target.value)} style={{ ...INPUT_TOOLBAR, flex: '0 1 220px', minWidth: '180px' }}>
-                        <option value="">Colegio para importar...</option>
-                        {escuelas.map(escuela => <option key={escuela.id_escuela} value={escuela.id_escuela}>{escuela.nombre_escuela}</option>)}
-                      </select>
+            <select
+              aria-label="Colegio para importar"
+              value={escuelaImportacion}
+              onChange={e => setEscuelaImportacion(e.target.value)}
+              style={{ ...INPUT_TOOLBAR, flex: '0 1 220px', minWidth: '180px' }}
+            >
+              <option value="">Colegio para importar…</option>
+              {escuelas.map(escuela => <option key={escuela.id_escuela} value={escuela.id_escuela}>{escuela.nombre_escuela}</option>)}
+            </select>
+            <ImportarAlumnosExcel
+              idDocente={userId}
+              idEscuela={escuelaImportacion}
+              onImportado={cargar}
+            />
           </div>
+
+          {errorCarga && (
+            <div role="alert" style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 12px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+              <span>{errorCarga}</span>
+              <button type="button" onClick={cargar} style={{ ...BTN.cancelarEdit, color: '#991b1b', borderColor: '#fca5a5' }}>Reintentar</button>
+            </div>
+          )}
 
           {/* Formulario nuevo alumno */}
           {mostrarForm && (
@@ -290,7 +292,7 @@ const AlumnosView = ({ onVolver }) => {
           <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: '#b45309 #fff9c4' }}>
             {filtrados.length === 0 ? (
               <div style={{ border: '2px dashed #d1d5db', borderRadius: '12px', padding: '40px', textAlign: 'center', color: '#9ca3af', fontSize: '1.1rem' }}>
-                {alumnos.length === 0 ? 'Todavía no cargaste alumnos. ¡Agregá el primero!' : 'No hay alumnos que coincidan.'}
+                {alumnos.length === 0 ? 'Todavía no cargaste alumnos. Agregá el primero.' : 'No hay alumnos que coincidan.'}
               </div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '1rem' }}>
@@ -307,7 +309,7 @@ const AlumnosView = ({ onVolver }) => {
                   {gruposPorEscuela.flatMap(grupo => [
                     <tr key={`${grupo.id}-heading`}>
                       <td colSpan={5} style={{ padding: '8px 12px', background: '#dcfce7', color: '#166534', fontWeight: 'bold' }}>
-                        🏫 {grupo.nombre} ({grupo.alumnos.length})
+                         {grupo.nombre} ({grupo.alumnos.length})
                       </td>
                     </tr>,
                     ...grupo.alumnos.map((a, i) => {
@@ -327,9 +329,9 @@ const AlumnosView = ({ onVolver }) => {
                             </td>
                             <td style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                               <button onClick={() => guardarEdicion(a.id_alumno)} disabled={guardando} style={{ ...BTN.guardar, marginRight: '6px', opacity: guardando ? 0.6 : 1 }}>
-                                {guardando ? '...' : '💾 Guardar'}
+                                 {guardando ? 'Guardando…' : 'Guardar'}
                               </button>
-                              <button onClick={cancelarEdicion} style={BTN.cancelarEdit}>✖</button>
+                              <button onClick={cancelarEdicion} style={BTN.cancelarEdit}>Cancelar</button>
                             </td>
                           </>
                         ) : (
@@ -339,8 +341,8 @@ const AlumnosView = ({ onVolver }) => {
                             <td style={{ padding: '8px 12px' }}>{a.email}</td>
                             <td style={{ padding: '8px 12px' }}>{escuelas.find(escuela => escuela.id_escuela === a.id_escuela)?.nombre_escuela || 'Sin colegio'}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                              <button onClick={() => iniciarEdicion(a)} style={BTN.editar} title="Editar alumno">✏️</button>
-                              <button onClick={() => handleEliminar(a.id_alumno, a.nombre)} style={BTN.eliminar} title="Eliminar alumno">🗑</button>
+                               <button onClick={() => iniciarEdicion(a)} style={BTN.editar} title="Editar alumno" aria-label={`Editar a ${a.nombre}`}>Editar</button>
+                               <button onClick={() => handleEliminar(a.id_alumno, a.nombre)} style={BTN.eliminar} title="Eliminar alumno" aria-label={`Eliminar a ${a.nombre}`}>Eliminar</button>
                             </td>
                           </>
                         )}
@@ -359,7 +361,7 @@ const AlumnosView = ({ onVolver }) => {
       {tabActiva === 'calificaciones' && (
         gruposPorEscuela.map(grupo => (
           <div key={grupo.id}>
-            <h3 style={{ color: '#166534', margin: '8px 0' }}>🏫 {grupo.nombre}</h3>
+             <h3 style={{ color: '#166534', margin: '8px 0' }}>{grupo.nombre}</h3>
             <TablaCalificaciones alumnos={grupo.alumnos} idDocente={userId} />
           </div>
         ))
@@ -369,7 +371,7 @@ const AlumnosView = ({ onVolver }) => {
       {tabActiva === 'asistencia' && (
         gruposPorEscuela.map(grupo => (
           <div key={grupo.id}>
-            <h3 style={{ color: '#166534', margin: '8px 0' }}>🏫 {grupo.nombre}</h3>
+             <h3 style={{ color: '#166534', margin: '8px 0' }}>{grupo.nombre}</h3>
             <TablaAsistencia alumnos={grupo.alumnos} idDocente={userId} />
           </div>
         ))

@@ -25,6 +25,7 @@ export default function CalendarioView({ onVolver }) {
   const [datos, setDatos]         = useState({ eventos: [], planificaciones: [], feriados: [] });
   const [cargando, setCargando]   = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [feedback, setFeedback] = useState(null);
   const [cronograma, setCronograma] = useState([]);
 
   const [modalEvento,    setModalEvento]    = useState(false);
@@ -58,6 +59,11 @@ export default function CalendarioView({ onVolver }) {
   }, [userId, mes]);
 
   useEffect(() => { cargarMes(); }, [cargarMes]);
+
+  const avisar = (tipo, texto) => {
+    setFeedback({ tipo, texto });
+    window.setTimeout(() => setFeedback(null), 4800);
+  };
 
   const construirGrilla = () => {
     const year  = mes.getFullYear();
@@ -129,21 +135,25 @@ export default function CalendarioView({ onVolver }) {
   };
 
   const handleEliminarClase = async (idClase, incluirSiguientes) => {
+    setGuardando(true);
     try {
       await api.delete(`/generar/planificacion/clase/${idClase}`, {
         params: { incluir_siguientes: incluirSiguientes },
       });
       setModalClase(null);
       await cargarMes();
-      alert(incluirSiguientes
-        ? '✅ Clase y siguientes eliminadas.'
-        : '✅ Clase eliminada.');
+      avisar('ok', incluirSiguientes
+        ? 'Clase y siguientes eliminadas.'
+        : 'Clase eliminada.');
     } catch (e) {
-      alert(`Error al eliminar:\n${extraerError(e)}`);
+      avisar('error', `No se pudo eliminar: ${extraerError(e)}`);
+    } finally {
+      setGuardando(false);
     }
   };
 
   const handleSuspenderClase = async (idClase, motivo, observacion, desplazarSiguientes) => {
+    setGuardando(true);
     try {
       const res = await api.put(`/generar/planificacion/clase/${idClase}/suspender`, {
         motivo,
@@ -153,11 +163,41 @@ export default function CalendarioView({ onVolver }) {
       setModalClase(null);
       await cargarMes();
       const afectadas = res.data?.clases_afectadas || 0;
-      alert(desplazarSiguientes && afectadas > 0
-        ? `✅ Clase suspendida. Se desplazaron ${afectadas} clase(s) siguientes.`
-        : '✅ Clase suspendida.');
+      avisar('ok', desplazarSiguientes && afectadas > 0
+        ? `Clase suspendida. Se desplazaron ${afectadas} clase(s) siguientes.`
+        : 'Clase suspendida.');
     } catch (e) {
-      alert(`Error al suspender:\n${extraerError(e)}`);
+      avisar('error', `No se pudo suspender: ${extraerError(e)}`);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const handleReprogramarClase = async (idClase, nuevaFecha, motivo, desplazarSiguientes, temaClase) => {
+    setGuardando(true);
+    try {
+      const res = await api.put(`/generar/planificacion/clase/${idClase}/replanificar`, {
+        nueva_fecha: nuevaFecha,
+        tema_clase: temaClase || null,
+        motivo: motivo || null,
+        desplazar_siguientes: desplazarSiguientes,
+      });
+      const desplazadas = res.data?.clases_desplazadas || 0;
+      setModalClase(null);
+      const destino = new Date(`${nuevaFecha}T12:00:00`);
+      setMes(prev => {
+        const siguiente = new Date(prev);
+        siguiente.setFullYear(destino.getFullYear(), destino.getMonth(), 1);
+        return siguiente;
+      });
+      avisar('ok', desplazarSiguientes && desplazadas > 0
+        ? `Clase reprogramada. Se desplazaron ${desplazadas} clases siguientes.`
+        : 'Clase reprogramada.');
+      await cargarMes();
+    } catch (e) {
+      avisar('error', `No se pudo reprogramar: ${extraerError(e)}`);
+    } finally {
+      setGuardando(false);
     }
   };
 
@@ -273,6 +313,24 @@ export default function CalendarioView({ onVolver }) {
         justifyContent: 'space-between', padding: '24px 28px 12px',
         borderBottom: '2px dashed rgba(0,0,0,0.15)',
       }}>
+      {feedback && (
+        <div
+          role={feedback.tipo === 'error' ? 'alert' : 'status'}
+          aria-live="polite"
+          data-testid="calendar-feedback"
+          style={{
+            position: 'absolute', top: 18, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 1200, width: 'min(92%, 560px)', padding: '10px 14px',
+            borderRadius: 10, fontWeight: 'bold', textAlign: 'center',
+            color: feedback.tipo === 'error' ? '#991b1b' : '#166534',
+            background: feedback.tipo === 'error' ? '#fee2e2' : '#dcfce7',
+            border: `1px solid ${feedback.tipo === 'error' ? '#fca5a5' : '#86efac'}`,
+            boxShadow: '0 8px 20px rgba(0,0,0,0.14)',
+          }}
+        >
+          {feedback.texto}
+        </div>
+      )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
             onClick={() => setMes(m => { const n = new Date(m); n.setMonth(n.getMonth()-1); return n; })}
@@ -348,8 +406,8 @@ export default function CalendarioView({ onVolver }) {
                 </div>
 
                 {fers.map((f, fi) => (
-                  <div key={fi} style={chipStyle(FERIADO_COLOR)} title={f.nombre}>
-                    🏖 {f.nombre.length > 8 ? f.nombre.slice(0,8)+'…' : f.nombre}
+                     <div key={fi} style={chipStyle(FERIADO_COLOR)} title={f.nombre}>
+                     {f.nombre.length > 8 ? f.nombre.slice(0,8)+'…' : f.nombre}
                   </div>
                 ))}
 
@@ -358,7 +416,7 @@ export default function CalendarioView({ onVolver }) {
                     onClick={e => { e.stopPropagation(); setModalDetalle(ev); }}
                     style={{ ...chipStyle(ev.color), cursor: 'pointer' }}
                     title={`${ev.titulo} ${ev.hora_inicio}–${ev.hora_fin}`}>
-                    {ev.replanificado ? '🔄 ' : ''}{ev.hora_inicio?.slice(0,5)} {ev.titulo.length > 9 ? ev.titulo.slice(0,9)+'…' : ev.titulo}
+                     {ev.replanificado ? 'Replanificado · ' : ''}{ev.hora_inicio?.slice(0,5)} {ev.titulo.length > 9 ? ev.titulo.slice(0,9)+'…' : ev.titulo}
                   </div>
                 ))}
 
@@ -367,7 +425,7 @@ export default function CalendarioView({ onVolver }) {
                     onClick={e => { e.stopPropagation(); setPlanSeleccionada(p.id_planificacion); }}
                     style={{ ...chipStyle(p.color || '#818cf8'), cursor: 'pointer' }}
                     title={p.nombre_clase}>
-                    📋 {(p.nombre_clase||'').length > 8 ? (p.nombre_clase||'').slice(0,8)+'…' : p.nombre_clase}
+                     {(p.nombre_clase||'').length > 8 ? (p.nombre_clase||'').slice(0,8)+'…' : p.nombre_clase}
                   </div>
                 ))}
 
@@ -402,6 +460,8 @@ export default function CalendarioView({ onVolver }) {
         onClose={() => setModalClase(null)}
         onEliminar={handleEliminarClase}
         onSuspender={handleSuspenderClase}
+        onReprogramar={handleReprogramarClase}
+        guardando={guardando}
       />
 
       <ModalEvento

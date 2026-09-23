@@ -5,6 +5,7 @@ from app.services.email_service import enviar_email
 from typing import List, Optional
 from pydantic import BaseModel
 import csv, io, json
+import re
 
 router = APIRouter()
 
@@ -36,6 +37,12 @@ class AsistenciaIn(BaseModel):
     id_docente: str
     fecha: str   # "YYYY-MM-DD"
     estado: str  # "P" | "A" | "-"
+
+    @classmethod
+    def validate_estado(cls, value):
+        if value not in {"P", "A", "-"}:
+            raise ValueError("El estado debe ser P, A o -")
+        return value
 
 class BulkAsistenciaIn(BaseModel):
     registros: List[AsistenciaIn]
@@ -75,22 +82,52 @@ async def importar_csv(
     file: UploadFile = File(...),
 ):
     try:
-        contenido = (await file.read()).decode("utf-8")
-        reader = csv.DictReader(io.StringIO(contenido))
+        contenido = (await file.read()).decode("utf-8-sig")
+        muestra = contenido[:4096]
+        try:
+            dialecto = csv.Sniffer().sniff(muestra, delimiters=",;\t")
+        except csv.Error:
+            dialecto = csv.excel
+        reader = csv.DictReader(io.StringIO(contenido), dialect=dialecto)
+        if not reader.fieldnames:
+            raise HTTPException(status_code=400, detail="El CSV no tiene encabezados")
+
+        def normalizar_encabezado(valor):
+            return re.sub(r"[^a-z0-9]", "", (valor or "").strip().lower())
+
+        encabezados = {
+            normalizar_encabezado(nombre): nombre
+            for nombre in reader.fieldnames
+        }
+        nombre_col = encabezados.get("nombre")
+        apellido_col = encabezados.get("apellido")
+        email_col = encabezados.get("email") or encabezados.get("correo")
+        if not nombre_col or not email_col:
+            raise HTTPException(
+                status_code=400,
+                detail="El CSV debe incluir las columnas nombre y email (o correo)",
+            )
+
         creados, errores = 0, []
-        for row in reader:
+        for numero_fila, row in enumerate(reader, start=2):
             try:
+                nombre = (row.get(nombre_col) or "").strip()
+                apellido = (row.get(apellido_col) or "").strip() if apellido_col else ""
+                email = (row.get(email_col) or "").strip().lower()
+                if not nombre or not email or "@" not in email:
+                    errores.append(f"Fila {numero_fila}: nombre y email válidos son obligatorios")
+                    continue
                 supabase.table("alumnos").insert({
                     "id_docente": id_docente,
                     "id_curso":   id_curso,
                     "id_escuela": id_escuela,
-                    "nombre":     row.get("nombre",   "").strip(),
-                    "apellido":   row.get("apellido", "").strip(),
-                    "email":      row.get("email",    "").strip(),
+                    "nombre":     nombre,
+                    "apellido":   apellido,
+                    "email":      email,
                 }).execute()
                 creados += 1
             except Exception as e:
-                errores.append(f"{row.get('email')}: {str(e)}")
+                errores.append(f"{row.get(email_col) or numero_fila}: {str(e)}")
         return {"creados": creados, "errores": errores}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -218,6 +255,10 @@ async def guardar_nota(nota: NotaIn):
         .execute()
         .data or []
     )
+    if not nota.valor.strip():
+        if existing:
+            supabase.table("calificaciones").delete().eq("id", existing[0]["id"]).execute()
+        return {"status": "ok", "eliminada": bool(existing)}
     if existing:
         supabase.table("calificaciones").update({
             "valor": nota.valor,
@@ -250,6 +291,8 @@ async def listar_asistencia(id_docente: str):
 @router.put("/asistencia/registro")
 async def guardar_asistencia(reg: AsistenciaIn):
     """Upsert de un registro de asistencia (un alumno, una fecha)."""
+    if reg.estado not in {"P", "A", "-"}:
+        raise HTTPException(status_code=400, detail="El estado debe ser P, A o -")
     existing = (
         supabase.table("asistencia")
         .select("id")

@@ -243,6 +243,12 @@ class GoogleLoginPayload(BaseModel):
 async def login_google(datos: GoogleLoginPayload):
     """Login/registro con Google. Verifica el token y devuelve sesión."""
     try:
+        if not GOOGLE_CLIENT_ID:
+            raise HTTPException(
+                status_code=503,
+                detail="Google OAuth no está configurado en el servidor",
+            )
+
         # 1. Verificamos el token contra Google
         info = id_token.verify_oauth2_token(
             datos.credential,
@@ -251,66 +257,49 @@ async def login_google(datos: GoogleLoginPayload):
         )
         email = info.get("email")
         nombre = info.get("name") or "Docente"
-        google_sub = info.get("sub")
-        if not email:
+        if not email or info.get("email_verified") is not True:
             raise HTTPException(status_code=400, detail="Token de Google sin email")
-        # 2. Buscamos al docente en la base
-        existing = supabase.table("docentes")\
-            .select("*")\
-            .eq("email", email)\
-            .execute()
+
+        # 2. Intercambiamos el ID token real con Supabase Auth. No usamos una
+        # contraseña fija: además de ser inseguro, rompía el acceso de
+        # docentes que ya tenían una cuenta con ese email.
+        session_data = supabase.auth.sign_in_with_id_token({
+            "provider": "google",
+            "token": datos.credential,
+        })
+        session = getattr(session_data, "session", None)
+        auth_user = getattr(session_data, "user", None)
+        access_token = getattr(session, "access_token", None)
+        user_id = getattr(auth_user, "id", None)
+        if not access_token or not user_id:
+            raise HTTPException(status_code=502, detail="Supabase no devolvió una sesión de Google")
+
+        # 3. Creamos el perfil docente solo si todavía no existe.
+        db = supabase_admin or supabase
+        existing = db.table("docentes").select("*").eq("email", email).execute()
         if existing.data:
             docente = existing.data[0]
-            # Para usuarios existentes de Google, usamos contraseña dummy
-            random_pw = "google_oauth_dummy_password_12345"
         else:
-            # 3. Si no existe en docentes, verificamos si existe en Auth
             base_username = email.split("@")[0]
-            random_pw = "google_oauth_dummy_password_12345"
-            try:
-                # Intentamos crear el usuario en Supabase Auth
-                new_auth_user = supabase.auth.admin.create_user({
-                    "email": email,
-                    "password": random_pw,
-                    "email_confirm": True,
-                })
-                user_id = new_auth_user.user.id
-            except Exception as e:
-                if "already been registered" in str(e):
-                    # Usuario ya existe en Auth, obtenemos su ID
-                    users = supabase.auth.admin.list_users()
-                    user_id = None
-                    for user in users:
-                        if user.email == email:
-                            user_id = user.id
-                            break
-                    if not user_id:
-                        raise HTTPException(status_code=400, detail="Usuario existe pero no encontrado")
-                else:
-                    raise
-            # Insertamos en la tabla docentes (si no existe ya)
-            insert_res = supabase.table("docentes").insert({
+            insert_res = db.table("docentes").insert({
                 "id_docente": user_id,
                 "email": email,
                 "nombre": nombre,
                 "username": base_username,
-                # "google_sub": google_sub,  # Comentado hasta agregar columna en Supabase
             }).execute()
+            if not insert_res.data:
+                raise HTTPException(status_code=500, detail="No se pudo crear el perfil docente")
             docente = insert_res.data[0]
-        # 4. Iniciamos sesión en Supabase para obtener token válido
-        session_data = supabase.auth.sign_in_with_password({
-            "email": email,
-            "password": random_pw
-        })
+
         # 5. Devolvemos la sesión
         return {
-            "access_token": session_data.session.access_token,
+            "access_token": access_token,
             "token_type": "bearer",
             "user": {
                 "id": docente["id_docente"],
                 "email": docente["email"],
                 "nombre": docente.get("nombre", "Docente"),
-                "username": docente.get("username", base_username if not existing.data else docente.get("username")),
+                "username": docente.get("username") or email.split("@")[0],
                 "isGoogle": True,
             },
         }

@@ -4,7 +4,9 @@ import axios from 'axios';
  * Configuración centralizada de Axios para Kōkua.
  */
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
+  // En preview/deploy el proxy comparte el mismo origen; localhost solo
+  // debe usarse explícitamente durante desarrollo local.
+  baseURL: import.meta.env.VITE_API_URL || '/api/v1',
   headers: {
     'Content-Type': 'application/json',
   }

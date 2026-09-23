@@ -50,8 +50,17 @@ class PlanificacionWizardPayload(BaseModel):
 
 class ReplanificarClaseRequest(BaseModel):
     nueva_fecha: str            # "YYYY-MM-DD"
+    tema_clase: Optional[str] = None
     motivo: str = ""
     desplazar_siguientes: bool = True  # ← clave: arrastra las clases posteriores
+
+
+class EditarClaseRequest(BaseModel):
+    """Edición explícita del tema y/o fecha de una clase del cronograma."""
+    tema_clase: Optional[str] = None
+    fecha_programada: Optional[str] = None
+    motivo: str = ""
+    desplazar_siguientes: bool = True
 
 
 class EstadoClaseRequest(BaseModel):

@@ -15,12 +15,13 @@ from fastapi.responses import StreamingResponse
 from app.api.planificacion_schemas import (
     ClaseWizard, ExamenWizard, FeriadoWizard, PlanificacionWizardPayload,
     ReplanificarClaseRequest, EstadoClaseRequest, SuspenderClaseRequest,
-    UnidadInput, DistribuirPayload, ClaseDistribuida,
+    UnidadInput, DistribuirPayload, ClaseDistribuida, EditarClaseRequest,
 )
 from app.api.planificacion_helpers import (
     DIAS_ES, _es_feriado, _siguiente_habil,
     _obtener_planificacion_por_id as _obtener_planificacion_por_id_helper,
-    _cargar_feriados, _formatear_fecha_clase,
+    _cargar_feriados, _formatear_fecha_clase, _es_dia_habil,
+    _desplazar_a_dia_habil,
 )
 from app.api.planificacion_generadores import (
     _generar_docx_planificacion, _generar_pdf_planificacion,
@@ -201,6 +202,119 @@ async def get_cronograma(id_planificacion: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.put("/planificacion/clase/{id_clase}")
+async def editar_clase(id_clase: str, body: EditarClaseRequest):
+    """Edita el tema y/o la fecha de una clase puntual del cronograma."""
+    if body.tema_clase is None and body.fecha_programada is None:
+        raise HTTPException(status_code=400, detail="Indicá un tema o una fecha para actualizar")
+
+    try:
+        clase_res = (
+            supabase.table("cronograma_clases")
+            .select("*")
+            .eq("id_clase", id_clase)
+            .single()
+            .execute()
+        )
+        if not clase_res.data:
+            raise HTTPException(status_code=404, detail="Clase no encontrada")
+
+        clase = clase_res.data
+        fecha_original = clase.get("fecha_programada")
+        update_data = {}
+        delta_dias = 0
+        feriados = []
+
+        if body.tema_clase is not None:
+            tema = body.tema_clase.strip()
+            if not tema:
+                raise HTTPException(status_code=400, detail="El tema no puede estar vacío")
+            update_data["tema_clase"] = tema
+
+        if body.fecha_programada is not None:
+            try:
+                fecha_nueva_dt = date.fromisoformat(body.fecha_programada[:10])
+                fecha_original_dt = date.fromisoformat(fecha_original[:10])
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="La fecha debe tener formato YYYY-MM-DD")
+
+            plan_res = (
+                supabase.table("planificacion")
+                .select("id_docente")
+                .eq("id_planificacion", clase["id_planificacion"])
+                .single()
+                .execute()
+            )
+            id_docente = (plan_res.data or {}).get("id_docente", "")
+            feriados = _cargar_feriados(id_docente)
+            if not _es_dia_habil(fecha_nueva_dt, feriados):
+                raise HTTPException(
+                    status_code=400,
+                    detail="La nueva fecha debe ser un día hábil: lunes a viernes y sin feriado",
+                )
+
+            delta_dias = (fecha_nueva_dt - fecha_original_dt).days
+            update_data.update({
+                "fecha_programada": fecha_nueva_dt.isoformat(),
+                "estado_clase": (
+                    "reprogramada"
+                    if delta_dias
+                    else clase.get("estado_clase", "programada")
+                ),
+                "motivo_reprogramacion": body.motivo or None,
+            })
+
+        supabase.table("cronograma_clases").update(update_data).eq("id_clase", id_clase).execute()
+        clases_afectadas = [{
+            "id": id_clase,
+            "nueva_fecha": update_data.get("fecha_programada", fecha_original),
+        }]
+
+        if body.fecha_programada is not None and body.desplazar_siguientes and delta_dias:
+            siguientes = (
+                supabase.table("cronograma_clases")
+                .select("id_clase, numero, fecha_programada, tipo, estado_clase")
+                .eq("id_planificacion", clase["id_planificacion"])
+                .gt("numero", clase["numero"])
+                .order("numero", desc=False)
+                .execute()
+                .data or []
+            )
+            for sig in siguientes:
+                fecha_actual = date.fromisoformat(sig["fecha_programada"][:10])
+                fecha_desplazada = _desplazar_a_dia_habil(
+                    fecha_actual, delta_dias, feriados
+                ).isoformat()
+                estado = (
+                    "reprogramada"
+                    if sig.get("tipo", "clase") == "clase"
+                    else sig.get("estado_clase", "programada")
+                )
+                supabase.table("cronograma_clases").update({
+                    "fecha_programada": fecha_desplazada,
+                    "estado_clase": estado,
+                }).eq("id_clase", sig["id_clase"]).execute()
+                clases_afectadas.append({
+                    "id": sig["id_clase"],
+                    "nueva_fecha": fecha_desplazada,
+                })
+
+        return {
+            "ok": True,
+            "clase_editada": id_clase,
+            "fecha_original": fecha_original,
+            "nueva_fecha": update_data.get("fecha_programada", fecha_original),
+            "delta_dias": delta_dias,
+            "clases_desplazadas": len(clases_afectadas) - 1,
+            "detalle": clases_afectadas,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ ERROR editar clase: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/planificacion/clase/{id_clase}/replanificar")
 async def replanificar_clase(id_clase: str, body: ReplanificarClaseRequest):
     """
@@ -233,32 +347,45 @@ async def replanificar_clase(id_clase: str, body: ReplanificarClaseRequest):
         fecha_original   = clase["fecha_programada"]
 
         # 2. Calcular delta en días
-        fecha_orig_dt  = date.fromisoformat(fecha_original[:10])
-        fecha_nueva_dt = date.fromisoformat(body.nueva_fecha[:10])
+        try:
+            fecha_orig_dt = date.fromisoformat(fecha_original[:10])
+            fecha_nueva_dt = date.fromisoformat(body.nueva_fecha[:10])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="La fecha debe tener formato YYYY-MM-DD")
         delta_dias     = (fecha_nueva_dt - fecha_orig_dt).days
 
-        # 3. Actualizar la clase indicada
-        supabase.table("cronograma_clases").update({
+        plan_res = (
+            supabase.table("planificacion")
+            .select("id_docente")
+            .eq("id_planificacion", id_planificacion)
+            .single()
+            .execute()
+        )
+        id_docente = (plan_res.data or {}).get("id_docente", "")
+        feriados = _cargar_feriados(id_docente)
+        if not _es_dia_habil(fecha_nueva_dt, feriados):
+            raise HTTPException(
+                status_code=400,
+                detail="La nueva fecha debe ser un día hábil: lunes a viernes y sin feriado",
+            )
+
+        # 3. Actualizar la clase indicada, incluyendo el tema si fue editado.
+        update_data = {
             "fecha_programada": body.nueva_fecha,
-            "estado_clase":     "reprogramada",
+            "estado_clase":     "reprogramada" if delta_dias else clase.get("estado_clase", "programada"),
             "motivo_reprogramacion": body.motivo or None,
-        }).eq("id_clase", id_clase).execute()
+        }
+        if body.tema_clase is not None:
+            tema = body.tema_clase.strip()
+            if not tema:
+                raise HTTPException(status_code=400, detail="El tema no puede estar vacío")
+            update_data["tema_clase"] = tema
+        supabase.table("cronograma_clases").update(update_data).eq("id_clase", id_clase).execute()
 
         clases_afectadas = [{"id": id_clase, "nueva_fecha": body.nueva_fecha}]
 
         # 4. Si hay que desplazar las siguientes, recalcular en cascada
         if body.desplazar_siguientes and delta_dias != 0:
-            # Obtener docente para cargar sus feriados
-            plan_res = (
-                supabase.table("planificacion")
-                .select("id_docente")
-                .eq("id_planificacion", id_planificacion)
-                .single()
-                .execute()
-            )
-            id_docente = (plan_res.data or {}).get("id_docente", "")
-            feriados   = _cargar_feriados(id_docente)
-
             # Obtener todas las clases POSTERIORES a la replanificada
             siguientes_res = (
                 supabase.table("cronograma_clases")
@@ -273,11 +400,9 @@ async def replanificar_clase(id_clase: str, body: ReplanificarClaseRequest):
             for sig in siguientes:
                 try:
                     fecha_actual_dt  = date.fromisoformat(sig["fecha_programada"][:10])
-                    fecha_nueva_sig  = (fecha_actual_dt + timedelta(days=delta_dias)).isoformat()
-
-                    # Si la nueva fecha cae en feriado, avanzar al siguiente hábil
-                    if _es_feriado(fecha_nueva_sig, feriados):
-                        fecha_nueva_sig = _siguiente_habil(fecha_nueva_sig, feriados)
+                    fecha_nueva_sig = _desplazar_a_dia_habil(
+                        fecha_actual_dt, delta_dias, feriados
+                    ).isoformat()
 
                     supabase.table("cronograma_clases").update({
                         "fecha_programada": fecha_nueva_sig,
@@ -287,7 +412,9 @@ async def replanificar_clase(id_clase: str, body: ReplanificarClaseRequest):
 
                     clases_afectadas.append({"id": sig["id_clase"], "nueva_fecha": fecha_nueva_sig})
                 except Exception as e:
-                    print(f"⚠️ No se pudo actualizar clase {sig['id_clase']}: {e}")
+                    raise RuntimeError(
+                        f"No se pudo actualizar clase {sig['id_clase']}: {e}"
+                    ) from e
 
         return {
             "ok": True,
@@ -610,10 +737,9 @@ async def suspender_clase(id_clase: str, body: SuspenderClaseRequest):
             for sig in siguientes:
                 try:
                     fecha_actual_dt = date.fromisoformat(sig["fecha_programada"][:10])
-                    fecha_nueva_sig = (fecha_actual_dt + timedelta(days=1)).isoformat()
-
-                    if _es_feriado(fecha_nueva_sig, feriados):
-                        fecha_nueva_sig = _siguiente_habil(fecha_nueva_sig, feriados)
+                    fecha_nueva_sig = _desplazar_a_dia_habil(
+                        fecha_actual_dt, 1, feriados
+                    ).isoformat()
 
                     supabase.table("cronograma_clases").update({
                         "fecha_programada": fecha_nueva_sig,
@@ -622,7 +748,9 @@ async def suspender_clase(id_clase: str, body: SuspenderClaseRequest):
 
                     clases_afectadas.append({"id": sig["id_clase"], "nueva_fecha": fecha_nueva_sig})
                 except Exception as e:
-                    print(f"⚠️ No se pudo desplazar clase {sig['id_clase']}: {e}")
+                    raise RuntimeError(
+                        f"No se pudo desplazar clase {sig['id_clase']}: {e}"
+                    ) from e
 
         return {
             "ok": True,

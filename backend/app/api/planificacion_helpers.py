@@ -41,6 +41,40 @@ def _siguiente_habil(fecha_iso: str, feriados: list, dias_max: int = 60) -> str:
     return fecha_iso  # fallback: misma fecha si no encontró
 
 
+def _es_dia_habil(fecha: date, feriados: list) -> bool:
+    """Lunes a viernes y fuera de los rangos de feriados configurados."""
+    return fecha.weekday() < 5 and not _es_feriado(fecha.isoformat(), feriados)
+
+
+def _ajustar_dia_habil(fecha: date, feriados: list, direccion: int = 1, dias_max: int = 60) -> date:
+    """
+    Normaliza una fecha que cayó en fin de semana o feriado.
+
+    Para desplazamientos hacia adelante se busca el siguiente día hábil; para
+    desplazamientos hacia atrás, el día hábil anterior. Esto evita que una
+    cascada del cronograma termine en sábados o domingos.
+    """
+    direccion = 1 if direccion >= 0 else -1
+    actual = fecha
+    for _ in range(dias_max):
+        if _es_dia_habil(actual, feriados):
+            return actual
+        actual += timedelta(days=direccion)
+    raise ValueError("No se encontró un día hábil dentro del límite de búsqueda")
+
+
+def _desplazar_a_dia_habil(fecha: date, delta_dias: int, feriados: list) -> date:
+    """Aplica el delta calendario y corrige fines de semana/feriados."""
+    if delta_dias == 0:
+        return _ajustar_dia_habil(fecha, feriados, direccion=1)
+    fecha_calculada = fecha + timedelta(days=delta_dias)
+    return _ajustar_dia_habil(
+        fecha_calculada,
+        feriados,
+        direccion=1 if delta_dias > 0 else -1,
+    )
+
+
 def _obtener_planificacion_por_id(id_plan: str, client=None):
     """Busca la planificación por id_planificacion o por id, por compatibilidad con distintos esquemas."""
     db = client or supabase
