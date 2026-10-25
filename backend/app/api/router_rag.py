@@ -5,10 +5,12 @@ from typing import List
 # Comentado porque no existe app.core.security en tu estructura actual
 # from app.core.security import get_current_user 
 from datetime import datetime
+import logging
 from app.core.database import supabase
-from app.services.rag_service import RAGService  # ← agregado: indexación RAG
+from app.services.rag_service import PDFExtractionError, RAGService, extract_pdf_pages  # ← agregado: indexación RAG
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Carpeta base para los PDFs de los docentes en Linux
 # Usamos una ruta relativa que funcionará bien en tu carpeta Documentos
@@ -68,37 +70,58 @@ async def subir_documento(
                 }).execute()
             except Exception as e:
                 # no bloquear por fallo en el registro; seguimos con los demás
-                print(f"⚠️ No pude registrar {filename} en BD: {e}")
+                logger.exception("No pude registrar %s en BD", filename)
 
             # ── Indexación RAG (solo PDFs) ──────────────────────────────────
             # Trocea el texto y genera embeddings para poder recuperarlo
             # luego como contexto en las consultas del asistente conversacional.
             chunks_indexados = 0
+            indexado = False
+            estado_indexacion = "not_applicable"
+            error_indexacion = None
             if ext == '.pdf':
+                estado_indexacion = "failed"
                 try:
                     chunks, embeddings = RAGService.process_pdf(file_path)
+                    supabase.table("chunks_rag").delete().eq(
+                        "id_docente", id_docente
+                    ).eq("nombre_original", filename).execute()
                     filas_chunks = [
                         {
                             "id_docente":      id_docente,
+                            "nombre_original": filename,
                             "contenido_chunk": chunk_texto,
                             "embedding":       vector,
                         }
                         for chunk_texto, vector in zip(chunks, embeddings)
                     ]
-                    if filas_chunks:
-                        supabase.table("chunks_rag").insert(filas_chunks).execute()
-                        chunks_indexados = len(filas_chunks)
+                    for inicio in range(0, len(filas_chunks), 100):
+                        supabase.table("chunks_rag").insert(
+                            filas_chunks[inicio:inicio + 100]
+                        ).execute()
+                    chunks_indexados = len(filas_chunks)
+                    indexado = True
+                    estado_indexacion = "indexed"
+                    print(f"[RAG] {filename}: {chunks_indexados} fragmentos indexados")
                 except Exception as e:
                     # no bloquear la subida si falla la indexación: el archivo
                     # queda guardado igual, solo no estará disponible para RAG
-                    print(f"⚠️ No se pudo indexar {filename} para RAG: {e}")
+                    logger.exception("No se pudo indexar %s para RAG", filename)
+                    chunks_indexados = 0
+                    indexado = False
+                    error_indexacion = str(e)
 
             resultados.append({
                 "filename": filename,
                 "path": file_path,
                 "size_mb": tamanio_mb,
                 "chunks_indexados": chunks_indexados,
+                "indexado": indexado,
+                "estado_indexacion": estado_indexacion,
+                "error_indexacion": error_indexacion,
             })
         return {"status": "success", "uploaded": resultados}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al guardar: {str(e)}")

@@ -27,6 +27,7 @@ from pptx.util import Inches, Pt
 from app.core.database import supabase
 from app.services.ai_service import SYSTEM_PROMPT_PPTX
 from app.services.rag_orchestrator import RAGOrchestrator
+from app.services.rag_service import PDFExtractionError
 from app.api.contenido_helpers import _datos_escuela_materia, _contexto_biblio, _encabezado_documento
 from app.utils.visual_theme import THEME, ppt_rgb
 
@@ -868,15 +869,10 @@ async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[U
     contenido_pdf = ""
     if file:
         try:
-            from pypdf import PdfReader
             pdf_bytes = await file.read()
-            if not pdf_bytes:
-                raise ValueError("El PDF está vacío.")
-            reader = PdfReader(BytesIO(pdf_bytes))
-            contenido_pdf = "\n".join([p.extract_text() or "" for p in reader.pages])
-        except Exception as e:
-            print(f"⚠️ No pude leer el PDF: {e}")
-            contenido_pdf = ""
+            contenido_pdf = RAGOrchestrator._extraer_texto_pdf(pdf_bytes)
+        except PDFExtractionError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     prompt_base = (
         f"Genera una presentación académica breve y visualmente clara sobre '{tema}'. "

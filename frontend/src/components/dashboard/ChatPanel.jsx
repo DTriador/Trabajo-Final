@@ -41,13 +41,18 @@ const ChatPanel = () => {
     formData.append('id_docente', user?.id || user?.uid || '');
 
     try {
-      await api.post('/documentos/subir', formData, {
+      const res = await api.post('/documentos/subir', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
+      const falloIndexacion = res.data?.uploaded?.some(item =>
+        /\.pdf$/i.test(item.filename || '') && item.indexado === false
+      );
 
       setMessages(prev => [...prev, { 
         sender: 'ai', 
-        text: ` Procesado con éxito: "${file.name}". Ya podés hacerme preguntas.` 
+        text: falloIndexacion
+          ? 'El archivo se guardó, pero no se pudo preparar para las consultas del asistente. Intentá subirlo de nuevo.'
+          : ` Procesado con éxito: "${file.name}". Ya podés hacerme preguntas.`
       }]);
     } catch (err) {
       const detalle = err.response?.data?.detail || err.message || 'Error desconocido';

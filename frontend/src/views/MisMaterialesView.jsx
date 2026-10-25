@@ -145,11 +145,16 @@ const MisMaterialesView = ({ onVolver }) => {
       const formData = new FormData();
        formData.append('files', file);
       formData.append('id_docente', userId);
-      await api.post('/documentos/subir', formData, { headers: { 'Content-Type': undefined } });
+      const uploadRes = await api.post('/documentos/subir', formData, { headers: { 'Content-Type': undefined } });
+      const falloIndexacion = uploadRes.data?.uploaded?.some(item =>
+        /\.pdf$/i.test(item.filename || '') && item.indexado === false
+      );
       const res = await api.get(`/proyectos/archivos/${userId}`);
       setMateriales(res.data || []);
       setActiveTab('materiales');
-      alert('¡Bibliografía subida! Ya aparece en Mis Materiales.');
+      alert(falloIndexacion
+        ? 'El archivo se guardó, pero no se pudo preparar para las consultas del asistente. Intentá subirlo de nuevo.'
+        : '¡Bibliografía subida! Ya aparece en Mis Materiales.');
     } catch (e) {
       alert(`Error al subir: ${e.response?.data?.detail || e.message}`);
     } finally {

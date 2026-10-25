@@ -1,18 +1,24 @@
 # backend/app/services/rag_orchestrator.py
 import json
+import logging
 import re
 import fitz
 import os
 from openai import OpenAI
-from google import genai as google_genai
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.core.database import supabase
 from dotenv import load_dotenv
+from app.services.rag_service import PDFExtractionError
+from app.services.embeddings import embed_texts, EMBEDDING_DIM
 
 load_dotenv()
 
-# 🔐 Gemini para embeddings (gratis)
-_gemini_client = google_genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+logger = logging.getLogger("kokua.rag")
+PROMPT_MAX_CHARS = 14000
+PDF_MAX_CHARS = 8000
+_RESERVA_PROMPT = 600
+MAX_CHUNKS_SELECCION = 800
 
 # 🔐 Groq para generación
 groq_client = OpenAI(
@@ -28,15 +34,31 @@ class RAGOrchestrator:
     # =========================
     @staticmethod
     def _extraer_texto_pdf(pdf_bytes):
+        if not pdf_bytes:
+            raise PDFExtractionError("El PDF está vacío.")
+
         try:
-            texto = ""
+            texto_paginas = []
             with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-                for pagina in doc:
-                    texto += pagina.get_text()
-            return texto
-        except Exception as e:
-            print(f"Error extrayendo PDF: {e}")
-            return ""
+                if not len(doc):
+                    raise PDFExtractionError("El PDF no contiene páginas.")
+                for numero, pagina in enumerate(doc, start=1):
+                    try:
+                        texto = pagina.get_text().strip()
+                    except Exception as error:
+                        raise PDFExtractionError(
+                            f"No se pudo extraer el texto de la página {numero}: {error}"
+                        ) from error
+                    if texto:
+                        texto_paginas.append(f"Página {numero}:\n{texto}")
+        except PDFExtractionError:
+            raise
+        except Exception as error:
+            raise PDFExtractionError(f"No se pudo leer el PDF: {error}") from error
+
+        if not texto_paginas:
+            raise PDFExtractionError("El PDF no contiene texto extraíble.")
+        return "\n\n".join(texto_paginas)
 
     # =========================
     # EMBEDDINGS (GEMINI)
@@ -44,20 +66,109 @@ class RAGOrchestrator:
     @staticmethod
     def _get_embedding(texto: str):
         try:
-            r = _gemini_client.models.embed_content(
-                model="models/gemini-embedding-001",
-                contents=texto,
-            )
-            return r.embeddings[0].values
-        except Exception as e:
-            print(f"⚠️ Embedding Gemini falló. Bypass activado. Error: {e}")
+            return embed_texts([texto], "consulta")[0]
+        except Exception:
+            logger.exception("Falló la generación del embedding de consulta")
             return None
+
+    @staticmethod
+    def _buscar_fragmentos(query_vector, id_docente, k) -> list[str]:
+        if not query_vector:
+            return []
+        if not id_docente:
+            print("[RAG] No se buscan fragmentos: falta id_docente")
+            return []
+        try:
+            result = supabase.rpc(
+                "match_chunks",
+                {
+                    "query_embedding": query_vector,
+                    "p_id_docente": id_docente,
+                    "match_count": k,
+                },
+            ).execute()
+            fragmentos = [
+                fila["contenido_chunk"] for fila in (result.data or [])
+            ]
+            print(f"[RAG] {len(fragmentos)} fragmentos recuperados para el docente")
+            return fragmentos
+        except Exception:
+            logger.exception("Falló la búsqueda de fragmentos RAG")
+            return []
+
+    @staticmethod
+    def _presupuesto_contexto(system_instruction, user_prompt) -> int:
+        base = len(system_instruction) + len(user_prompt)
+        if base > PROMPT_MAX_CHARS:
+            print("[RAG] La instrucción y el pedido superan el límite del prompt")
+        return max(0, PROMPT_MAX_CHARS - base - _RESERVA_PROMPT)
+
+    @staticmethod
+    def _recortar_fragmentos(fragmentos: list[str], presupuesto: int) -> str:
+        if presupuesto <= 0:
+            return ""
+        seleccionados = []
+        longitud = 0
+        for fragmento in fragmentos:
+            longitud_nueva = longitud + len(fragmento) + (1 if seleccionados else 0)
+            if longitud_nueva > presupuesto:
+                break
+            seleccionados.append(fragmento)
+            longitud = longitud_nueva
+        return "\n".join(seleccionados)
+
+    @staticmethod
+    def _seleccionar_fragmentos_pdf(
+        texto, consulta, max_chars
+    ) -> tuple[str, bool]:
+        if len(texto) <= max_chars:
+            return texto, False
+        if max_chars <= 0:
+            return "", True
+
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=100,
+        )
+        fragmentos = splitter.split_text(texto)
+        if len(fragmentos) > MAX_CHUNKS_SELECCION:
+            print(
+                f"[RAG] PDF dividido en {len(fragmentos)} fragmentos; "
+                "se usará el inicio sin vectorizar todo el documento"
+            )
+            return texto[:max_chars], True
+
+        try:
+            vectores = embed_texts(fragmentos, "documento")
+            vector_consulta = embed_texts([consulta[:2000]], "consulta")[0]
+            puntajes = [
+                sum(valor * vector_consulta[indice] for indice, valor in enumerate(vector))
+                for vector in vectores
+            ]
+            posiciones = sorted(
+                range(len(fragmentos)),
+                key=lambda posicion: puntajes[posicion],
+                reverse=True,
+            )
+            elegidos = []
+            longitud = 0
+            for posicion in posiciones:
+                separador = len("\n[...]\n") if elegidos else 0
+                longitud_nueva = longitud + separador + len(fragmentos[posicion])
+                if longitud_nueva <= max_chars:
+                    elegidos.append(posicion)
+                    longitud = longitud_nueva
+            elegidos.sort()
+            return "\n[...]\n".join(fragmentos[posicion] for posicion in elegidos), True
+        except Exception:
+            logger.exception("Falló la selección semántica de fragmentos del PDF")
+            return texto[:max_chars], True
 
     # =========================
     # GENERATION (GROQ)
     # =========================
     @staticmethod
-    def _generate(prompt: str, max_chars: int = 14000):
+    def _generate(prompt: str, max_chars: int = PROMPT_MAX_CHARS):
 
         # Evitar prompts excesivamente largos
         if len(prompt) > max_chars:
@@ -72,8 +183,6 @@ class RAGOrchestrator:
             "openai/gpt-oss-20b",
             "qwen/qwen3.6-27b",
         ]
-
-        errores = []
 
         espera_json = any(
             marca in prompt.upper()
@@ -125,24 +234,9 @@ class RAGOrchestrator:
                 return response.choices[0].message.content
 
             except Exception as e:
-
-                error_real = str(e)
-
-                print(
-                    f"⚠️ El modelo {modelo} falló. "
-                    f"ERROR: {error_real}"
-                )
-
-                errores.append(
-                    f"{modelo}: {error_real}"
-                )
+                logger.exception("Falló la generación con el modelo %s", modelo)
 
                 continue
-
-        print("\n❌ RESUMEN DE ERRORES DE GROQ:")
-
-        for err in errores:
-            print(f"- {err}")
 
         raise Exception(
             "No fue posible generar una respuesta con "
@@ -204,25 +298,30 @@ class RAGOrchestrator:
     ):
         texto_archivo = cls._extraer_texto_pdf(file_content)
         query_vector = cls._get_embedding(user_prompt)
-
-        context_db = ""
-        if query_vector:
-            try:
-                result = supabase.table('chunks_rag').select('contenido_chunk').filter(
-                    'id_docente', 'eq', id_docente
-                ).order(
-                    'embedding <-> \'{}\''.format(','.join(map(str, query_vector)))
-                ).limit(4).execute()
-                context_db = "\n".join([row['contenido_chunk'] for row in result.data]) if result.data else ""
-            except Exception as rag_err:
-                print(f"⚠️ RAG no disponible, generando sin contexto: {rag_err}")
-                context_db = ""
+        presupuesto = cls._presupuesto_contexto(system_instruction, user_prompt)
+        presupuesto_pdf = min(PDF_MAX_CHARS, presupuesto)
+        texto_pdf, recortado = cls._seleccionar_fragmentos_pdf(
+            texto_archivo, user_prompt, presupuesto_pdf
+        )
+        presupuesto_extra = max(0, presupuesto - len(texto_pdf))
+        fragmentos_db = cls._buscar_fragmentos(query_vector, id_docente, 4)
+        context_db = cls._recortar_fragmentos(fragmentos_db, presupuesto_extra)
+        bloque_pdf = texto_pdf
+        if recortado:
+            bloque_pdf = (
+                "(Se incluyen los fragmentos más relevantes del PDF, no el documento completo.)\n"
+                + texto_pdf
+            )
+        print(
+            f"[RAG] PDF de {len(texto_archivo)} caracteres: "
+            f"se usaron {len(texto_pdf)}"
+        )
 
         full_prompt = f"""
 {system_instruction}
 
 CONTENIDO DEL ARCHIVO PDF ADJUNTO (PRIORIDAD ALTA):
-{texto_archivo if texto_archivo else "No se pudo leer el archivo."}
+{bloque_pdf if bloque_pdf else "No se pudo leer el archivo."}
 
 CONTEXTO EXTRA:
 {context_db}
@@ -244,20 +343,9 @@ PEDIDO:
         id_docente: str = None,
     ):
         query_vector = cls._get_embedding(user_prompt)
-
-        context_text = ""
-        if query_vector:
-            try:
-                query = supabase.table('chunks_rag').select('contenido_chunk')
-                if id_docente:
-                    query = query.filter('id_docente', 'eq', id_docente)
-                result = query.order(
-                    'embedding <-> \'{}\''.format(','.join(map(str, query_vector)))
-                ).limit(6).execute()
-                context_text = "\n".join([row['contenido_chunk'] for row in result.data]) if result.data else ""
-            except Exception as rag_err:
-                print(f"⚠️ RAG no disponible, generando sin contexto: {rag_err}")
-                context_text = ""
+        presupuesto = cls._presupuesto_contexto(system_instruction, user_prompt)
+        fragmentos = cls._buscar_fragmentos(query_vector, id_docente, 6)
+        context_text = cls._recortar_fragmentos(fragmentos, presupuesto)
 
         full_prompt = f"""
 {system_instruction}
@@ -281,25 +369,15 @@ PEDIDO:
         id_docente: str,
     ):
         query_vector = cls._get_embedding(user_prompt)
-
-        context_text = ""
-        if query_vector:
-            try:
-                result = supabase.table('chunks_rag').select('contenido_chunk').filter(
-                    'id_docente', 'eq', id_docente
-                ).order(
-                    'embedding <-> \'{}\''.format(','.join(map(str, query_vector)))
-                ).limit(6).execute()
-                context_text = "\n".join([row['contenido_chunk'] for row in result.data]) if result.data else ""
-            except Exception as rag_err:
-                print(f"⚠️ RAG no disponible: {rag_err}")
-                context_text = ""
-
         system_instruction = """
         Sos un asistente pedagógico experto llamado Kōkua. Respondé de manera amigable, clara y útil.
         Basáte en el contexto proporcionado para dar respuestas precisas sobre temas educativos.
         Si no hay contexto suficiente, pedí más información o sugerí subir documentos.
         """
+
+        presupuesto = cls._presupuesto_contexto(system_instruction, user_prompt)
+        fragmentos = cls._buscar_fragmentos(query_vector, id_docente, 6)
+        context_text = cls._recortar_fragmentos(fragmentos, presupuesto)
 
         full_prompt = f"""
 {system_instruction}

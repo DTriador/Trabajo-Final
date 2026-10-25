@@ -8,6 +8,7 @@ def contenido_module(monkeypatch):
     os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
     os.environ.setdefault("SUPABASE_ANON_KEY", "fake-anon")
     os.environ.setdefault("SUPABASE_SERVICE_KEY", "fake-service")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini")
     module = importlib.import_module("app.api.router_contenido")
     return importlib.reload(module)
 

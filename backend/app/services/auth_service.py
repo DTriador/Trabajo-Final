@@ -1,4 +1,5 @@
 from app.core.database import supabase, supabase_admin
+from app.core.auth_client import crear_cliente_auth
 from fastapi import HTTPException, status
 
 class AuthService:
@@ -15,7 +16,7 @@ class AuthService:
             print("EMAIL:", repr(datos.get("email")))
             print("USERNAME:", repr(datos.get("username")))
             # 1. Crear usuario en Supabase Auth
-            res = supabase.auth.sign_up({
+            res = crear_cliente_auth().auth.sign_up({
                 "email": datos['email'],
                 "password": datos['password'],
                 "options": {
@@ -87,7 +88,7 @@ class AuthService:
         Autentica al docente contra Supabase Auth y devuelve la sesión.
         """
         try:
-            res = supabase.auth.sign_in_with_password({
+            res = crear_cliente_auth().auth.sign_in_with_password({
                 "email": email,
                 "password": password
             })

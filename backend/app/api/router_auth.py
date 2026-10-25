@@ -1,5 +1,7 @@
-from fastapi import APIRouter, HTTPException, status, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Form
 from app.services.auth_service import AuthService
+from app.core.auth_client import crear_cliente_auth
+from app.core.security import get_current_user
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from datetime import date
 import re
@@ -15,6 +17,11 @@ from app.services.email_service import enviar_email
 
 
 router = APIRouter(tags=["Autenticación"])
+
+
+@router.get("/whoami")
+def whoami(user=Depends(get_current_user)):
+    return {"id": str(user.id), "email": user.email}
 
 
 def _supabase_error_detail(error: Exception) -> dict:
@@ -217,7 +224,7 @@ async def cambiar_password(user_id: str, datos: CambiarPassword):
         email = user_query.data["email"]
         # 2. Verificamos la contraseña actual intentando un login
         try:
-            supabase.auth.sign_in_with_password({
+            crear_cliente_auth().auth.sign_in_with_password({
                 "email": email,
                 "password": datos.password_actual,
             })
@@ -263,7 +270,7 @@ async def login_google(datos: GoogleLoginPayload):
         # 2. Intercambiamos el ID token real con Supabase Auth. No usamos una
         # contraseña fija: además de ser inseguro, rompía el acceso de
         # docentes que ya tenían una cuenta con ese email.
-        session_data = supabase.auth.sign_in_with_id_token({
+        session_data = crear_cliente_auth().auth.sign_in_with_id_token({
             "provider": "google",
             "token": datos.credential,
         })
@@ -310,43 +317,6 @@ async def login_google(datos: GoogleLoginPayload):
         raise
     except Exception as e:
         print(f"❌ Error en login Google: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    
-@router.get("/perfil-completo/{id_docente}")
-async def perfil_completo(id_docente: str):
-    try:
-        # 1. Datos del docente
-        docente_res = supabase.table("docentes").select("*").eq("id_docente", id_docente).single().execute()
-        docente = docente_res.data or {}
-
-        # 2. Escuelas vinculadas
-        escuelas_res = supabase.table("escuela_docente") \
-            .select("id_escuela, escuelas(id_escuela, nombre_escuela)") \
-            .eq("id_docente", id_docente).execute()
-        escuelas = [
-            {"id_escuela": e["escuelas"]["id_escuela"], "nombre": e["escuelas"]["nombre_escuela"]}
-            for e in (escuelas_res.data or []) if e.get("escuelas")
-        ]
-
-        # 3. Cursos / materias del docente
-        cursos_res = supabase.table("cursos").select("*").eq("id_docente", id_docente).execute()
-        cursos = [
-            {
-                "id_curso": c.get("id_curso"),
-                "materia": c.get("nombre_materia"),
-                "division": c.get("division"),
-                "id_escuela": c.get("id_escuela"),
-            }
-            for c in (cursos_res.data or [])
-        ]
-
-        return {
-            "docente": docente,
-            "escuelas": escuelas,
-            "cursos": cursos
-        }
-    except Exception as e:
-        print(f"❌ Error perfil-completo: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
 @router.post("/forgot-password")

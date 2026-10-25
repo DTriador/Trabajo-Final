@@ -45,12 +45,17 @@ const ChatFloating = () => {
         formData.append('files', file);
         formData.append('id_docente', user?.id || user?.uid);
         try {
-            await api.post('/documentos/subir', formData, {
+            const res = await api.post('/documentos/subir', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
+            const falloIndexacion = res.data?.uploaded?.some(item =>
+                /\.pdf$/i.test(item.filename || '') && item.indexado === false
+            );
             setMessages(prev => [...prev, {
                 sender: 'bot',
-                text: `📎 Archivo "${file.name}" indexado. Ya podés preguntarme sobre este material.`
+                text: falloIndexacion
+                    ? 'El archivo se guardó, pero no se pudo preparar para las consultas del asistente. Intentá subirlo de nuevo.'
+                    : `📎 Archivo "${file.name}" indexado. Ya podés preguntarme sobre este material.`
             }]);
         } catch (err) {
             console.error("Error al subir archivo:", err);

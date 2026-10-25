@@ -285,6 +285,9 @@ async def eliminar_archivo(id_archivo: str):
         if not archivo.data:
             raise HTTPException(status_code=404, detail="Archivo no encontrado")
 
+        nombre_archivo = archivo.data.get("nombre_archivo")
+        id_docente = archivo.data.get("id_docente")
+
         # 2) Borrar del bucket de Storage
         path = archivo.data.get("path_archivo") or archivo.data.get("path")
         if not path:
@@ -300,6 +303,13 @@ async def eliminar_archivo(id_archivo: str):
 
         # 3) Borrar de la tabla
         supabase.table("archivos_generados").delete().eq("id_archivo", id_archivo).execute()
+
+        try:
+            supabase.table("chunks_rag").delete().eq(
+                "id_docente", id_docente
+            ).eq("nombre_original", nombre_archivo).execute()
+        except Exception as e:
+            print(f"⚠️ No se pudieron borrar los fragmentos RAG: {e}")
 
         return {"status": "success", "id_archivo": id_archivo}
     except HTTPException:
