@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import { COLORES } from './calendario/calendarioHelpers';
+import { formatDateInput, parseDateInput } from '../../utils/dateInput';
 
 // ─── Helpers exportados ───────────────────────────────────────────────────────
 export const toISO = (d) => {
@@ -290,6 +291,7 @@ export function PasoCalendario({
   const [feriadosExtra, setFeriadosExtra] = useState([]);
   const [feriadoFecha,  setFeriadoFecha]  = useState('');
   const [feriadoNombre, setFeriadoNombre] = useState('');
+  const [errorFecha, setErrorFecha] = useState('');
 
   // Cargar feriados: nacionales (API) + propios del docente (backend)
   useEffect(() => {
@@ -342,13 +344,15 @@ export function PasoCalendario({
 
   // Recalcular fechasCalculadas cada vez que cambia rango, días o feriados
   useEffect(() => {
-    if (!rangoInicio || !rangoFin || diasSemana.size === 0) {
+    const inicioISO = parseDateInput(rangoInicio);
+    const finISO = parseDateInput(rangoFin);
+    if (!inicioISO || !finISO || inicioISO === null || finISO === null || diasSemana.size === 0) {
       setFechasCalculadas([]);
       return;
     }
     const fechas = [];
-    let cur = new Date(rangoInicio + 'T12:00:00');
-    const end = new Date(rangoFin + 'T12:00:00');
+    let cur = new Date(inicioISO + 'T12:00:00');
+    const end = new Date(finISO + 'T12:00:00');
     while (cur <= end) {
       const dow = cur.getDay();
       const key = toISO(cur);
@@ -373,13 +377,18 @@ export function PasoCalendario({
   };
 
   const agregarFeriado = () => {
-    if (!feriadoFecha) return;
+    const fechaISO = parseDateInput(feriadoFecha);
+    if (!fechaISO) {
+      setErrorFecha('Ingresá una fecha válida para el día sin clase (DD/MM/AAAA).');
+      return;
+    }
     const nombre = feriadoNombre || 'Sin clase';
-    setFeriados(prev => ({ ...prev, [feriadoFecha]: nombre }));
+    setFeriados(prev => ({ ...prev, [fechaISO]: nombre }));
     // Quitar esa fecha de las calculadas si estaba
-    setFechasCalculadas(prev => prev.filter(f => f !== feriadoFecha));
-    setFeriadosExtra(prev => [...prev, { fecha: feriadoFecha, nombre }]);
+    setFechasCalculadas(prev => prev.filter(f => f !== fechaISO));
+    setFeriadosExtra(prev => [...prev, { fecha: fechaISO, nombre }]);
     setFeriadoFecha(''); setFeriadoNombre('');
+    setErrorFecha('');
   };
 
   const quitarFeriado = (fecha) => {
@@ -399,8 +408,12 @@ export function PasoCalendario({
     });
   };
 
-  const startRange = rangoInicio ? new Date(rangoInicio + 'T00:00:00') : null;
-  const endRange   = rangoFin   ? new Date(rangoFin   + 'T23:59:59') : null;
+  const rangoInicioISO = parseDateInput(rangoInicio);
+  const rangoFinISO = parseDateInput(rangoFin);
+  const startRange = rangoInicioISO ? new Date(rangoInicioISO + 'T00:00:00') : null;
+  const endRange   = rangoFinISO ? new Date(rangoFinISO + 'T23:59:59') : null;
+  const rangoInvalido = (rangoInicio.trim() && rangoInicioISO === null)
+    || (rangoFin.trim() && rangoFinISO === null);
 
   const disponibles = fechasCalculadas.length;
   const ok  = disponibles >= totalClases && totalClases > 0;
@@ -414,13 +427,22 @@ export function PasoCalendario({
         <div style={S.row2}>
           <div>
             <label style={S.label}>Fecha de inicio</label>
-            <input type="date" style={S.input} value={rangoInicio} onChange={e => setRangoInicio(e.target.value)} />
+            <input type="text" inputMode="numeric" placeholder="DD/MM/AAAA"
+              style={S.input} value={formatDateInput(rangoInicio)}
+              onChange={e => { setRangoInicio(e.target.value); setErrorFecha(''); }} />
           </div>
           <div>
             <label style={S.label}>Fecha de fin</label>
-            <input type="date" style={S.input} value={rangoFin} onChange={e => setRangoFin(e.target.value)} />
+            <input type="text" inputMode="numeric" placeholder="DD/MM/AAAA"
+              style={S.input} value={formatDateInput(rangoFin)}
+              onChange={e => { setRangoFin(e.target.value); setErrorFecha(''); }} />
           </div>
         </div>
+        {rangoInvalido && (
+          <p role="alert" style={{ color: '#b91c1c', fontWeight: 'bold', margin: '-4px 0 12px' }}>
+            Revisá las fechas: escribilas completas en formato DD/MM/AAAA.
+          </p>
+        )}
 
         <label style={S.label}>Días de clase en la semana</label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -571,17 +593,24 @@ export function PasoCalendario({
           Los feriados nacionales y los tuyos guardados en el calendario se excluyen automáticamente.
         </p>
         <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-          <input type="date" style={{ ...S.input, flex: 1, marginBottom: 0 }}
-            value={feriadoFecha} onChange={e => setFeriadoFecha(e.target.value)} />
+          <input type="text" inputMode="numeric" placeholder="DD/MM/AAAA"
+            style={{ ...S.input, flex: 1, marginBottom: 0 }}
+            value={formatDateInput(feriadoFecha)}
+            onChange={e => { setFeriadoFecha(e.target.value); setErrorFecha(''); }} />
           <input style={{ ...S.input, flex: 2, marginBottom: 0 }}
             placeholder="Nombre (opcional)"
             value={feriadoNombre} onChange={e => setFeriadoNombre(e.target.value)} />
           <button type="button" style={S.btnAccent('#fb923c')} onClick={agregarFeriado}>+ Agregar</button>
         </div>
+        {errorFecha && (
+          <p role="alert" style={{ color: '#b91c1c', fontWeight: 'bold', margin: '0 0 10px' }}>
+            {errorFecha}
+          </p>
+        )}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {feriadosExtra.map(f => (
             <span key={f.fecha} style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 20, padding: '3px 10px', fontSize: '0.82rem' }}>
-              {f.fecha} — {f.nombre}
+              {formatDateInput(f.fecha)} — {f.nombre}
               <button onClick={() => quitarFeriado(f.fecha)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', marginLeft: 4 }}>×</button>
             </span>
@@ -760,7 +789,10 @@ export function PasoPreview({ clases, setClases, onGuardar, guardando, generando
                 <div style={{ flex: 1 }}>
                   {/* Fecha + badges */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
-                    <input type="date" value={c.fecha} onChange={e => updateFecha(i, e.target.value)}
+                    <input type="text" inputMode="numeric" placeholder="DD/MM/AAAA"
+                      aria-label={`Fecha de ${c.tipo} ${c.numeroTipo}`}
+                      value={formatDateInput(c.fecha)}
+                      onChange={e => updateFecha(i, e.target.value)}
                       style={{
                         border: 'none', borderBottom: '1px dashed #94a3b8',
                         background: 'transparent', fontSize: '0.78rem',

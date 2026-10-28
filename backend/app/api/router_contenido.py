@@ -177,10 +177,17 @@ async def generar_presentacion(
     tema: str = Form(...),
     id_docente: str = Form(...),
     file: UploadFile = File(None),
+    titulo_presentacion: Optional[str] = Form(None),
+    id_escuela: Optional[str] = Form(None),
+    id_curso: Optional[str] = Form(None),
 ):
     """Genera un PPTX a partir de un tema y, opcionalmente, un PDF de contexto."""
     try:
-        return await generar_presentacion_pptx(tema, id_docente, file)
+        return await generar_presentacion_pptx(
+            tema, id_docente, file, titulo_presentacion, id_escuela, id_curso
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Error generando presentación: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error al generar presentación: {str(e)}")

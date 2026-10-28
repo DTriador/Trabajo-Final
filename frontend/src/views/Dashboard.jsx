@@ -172,14 +172,37 @@ const Dashboard = () => {
       backgroundImage: theme === 'light' ? "url('/img/chalkboard.jpg')" : "linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%)",
       backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat'
     }}>
-      {/* Botón de Tema */}
-      <button
-        onClick={toggleTheme}
-        className="theme-toggle fixed top-4 right-4 z-50 bg-gray-800 text-white p-2 rounded-full shadow-lg hover:bg-gray-700 transition-colors"
-        title={theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
-      >
-        {theme === 'light' ? '🌙' : '☀️'}
-      </button>
+      <div style={{
+        position: 'fixed', top: '16px', right: '16px', zIndex: 500,
+        display: 'flex', alignItems: 'center', gap: '8px',
+      }}>
+        <button
+          onClick={toggleTheme}
+          className="bg-gray-800 text-white p-2 rounded-full shadow-lg hover:bg-gray-700 transition-colors"
+          title={theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
+          aria-label={theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
+        >
+          {theme === 'light' ? '🌙' : '☀️'}
+        </button>
+        <button
+          type="button"
+          onClick={handleLogout}
+          title="Cerrar sesión"
+          aria-label="Cerrar Sesión"
+          style={{
+            background: 'var(--button-logout)', color: 'var(--button-logout-text)',
+            padding: '8px 14px', borderRadius: '18px',
+            border: '2px dashed var(--button-logout-border)',
+            fontFamily: "'Indie Flower', cursive", fontWeight: 'bold',
+            fontSize: '1rem', cursor: 'pointer',
+            boxShadow: '2px 3px 6px var(--shadow)',
+            display: 'flex', alignItems: 'center', gap: '6px',
+          }}
+        >
+          <LogOut size={16} />
+          Cerrar Sesión
+        </button>
+      </div>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Indie+Flower&family=Permanent+Marker&display=swap');
         html, body, #root { height: 100%; width: 100%; }
@@ -418,24 +441,6 @@ const Dashboard = () => {
               </div>
             ))}
 
-            <button
-              onClick={handleLogout}
-              style={{
-                marginTop: '8px', background: 'var(--button-logout)', color: 'var(--button-logout-text)',
-                padding: '6px 16px', borderRadius: '4px',
-                border: '2px dashed var(--button-logout-border)',
-                fontFamily: "'Indie Flower', cursive", fontWeight: 'bold',
-                fontSize: '1rem', cursor: 'pointer',
-                boxShadow: '2px 3px 6px var(--shadow)',
-                transform: 'rotate(-2deg)', transition: 'all 0.2s ease',
-                display: 'flex', alignItems: 'center', gap: '6px'
-              }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'rotate(0deg) scale(1.05)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'rotate(-2deg)'; }}
-            >
-              <LogOut size={16} />
-              Salir
-            </button>
           </nav>
         )}
 

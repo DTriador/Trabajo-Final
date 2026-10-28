@@ -25,8 +25,8 @@ export default function ImportarAlumnosExcel({ idDocente, idCurso, idEscuela, on
   const handleArchivo = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!idEscuela) {
-      setError('Elegí el colegio antes de seleccionar el archivo.');
+    if (!idEscuela || !idCurso) {
+      setError('Elegí el colegio y la asignatura/curso antes de seleccionar el archivo.');
       return;
     }
     setError('');
@@ -78,6 +78,10 @@ export default function ImportarAlumnosExcel({ idDocente, idCurso, idEscuela, on
 
   const handleImportar = async () => {
     if (!preview) return;
+    if (!idEscuela || !idCurso) {
+      setError('Elegí el colegio y la asignatura/curso antes de importar.');
+      return;
+    }
     const validas = preview.filas.filter(f => f.nombre && f.email);
     if (validas.length === 0) {
       setError('No hay filas válidas para importar. Nombre y email son obligatorios.');
@@ -103,9 +107,12 @@ export default function ImportarAlumnosExcel({ idDocente, idCurso, idEscuela, on
         headers: { 'Content-Type': undefined },
       });
 
-      const { creados, errores } = res.data;
+      const { creados, asignados, ya_existian, errores } = res.data;
       setResultado(
-        `${creados || 0} alumno(s) importado(s).` +
+        `${creados || 0} alumno(s) nuevo(s)` +
+        (asignados ? `, ${asignados} ya cargado(s) asignado(s) al curso` : '') +
+        (ya_existian ? `, ${ya_existian} ya estaba(n) en el curso` : '') +
+        '.' +
         (errores?.length ? ` ${errores.length} fila(s) requieren revisión.` : '')
       );
       setPreview(null);
@@ -124,7 +131,7 @@ export default function ImportarAlumnosExcel({ idDocente, idCurso, idEscuela, on
         type="button"
         data-testid="button-importar-alumnos"
         onClick={() => inputRef.current?.click()}
-        disabled={enviando}
+        disabled={enviando || !idEscuela || !idCurso}
         style={{
           background: 'white', color: '#1e5c3a',
           border: '2px solid #1e5c3a', borderRadius: 20,

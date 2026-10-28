@@ -131,7 +131,6 @@ def _normalize_ppt_slide_payload(slides):
             items = _clean_ppt_items([slide.get("descripcion")])
 
         if not items:
-            normalizadas.append({"titulo": titulo, "subtitulo": subtitulo, "contenido": []})
             continue
 
         bloques = _split_ppt_items(items, max_per_slide=PPT_MAX_BULLETS_PER_SLIDE)
@@ -140,14 +139,22 @@ def _normalize_ppt_slide_payload(slides):
             slide_subtitle = subtitulo if parte_idx == 1 else ""
             normalizadas.append({"titulo": slide_title, "subtitulo": slide_subtitle, "contenido": bloque})
 
-    if not normalizadas:
-        normalizadas = [{
-            "titulo": "Introducción",
-            "subtitulo": "",
-            "contenido": ["Tema principal", "Objetivos clave", "Conclusiones relevantes"],
-        }]
-
     return normalizadas
+
+
+def _remove_generated_number(text, expected_number: int) -> str:
+    """Quita prefijos de numeración que la IA duplica con el índice del DOCX."""
+    value = _coerce_ppt_text(text)
+    numero = re.escape(str(expected_number))
+    duplicated = re.compile(
+        rf"^\s*(?:(?:pregunta|consigna)\s+)?{numero}\s*[.)]\s*{numero}\s*[.)]\s+",
+        re.IGNORECASE,
+    )
+    single = re.compile(
+        rf"^\s*(?:(?:pregunta|consigna)\s+)?{numero}\s*[.)]\s+",
+        re.IGNORECASE,
+    )
+    return single.sub("", duplicated.sub("", value), count=1).strip()
 
 
 def _validate_slide_bounds(left, top, width, height, slide_width, slide_height, tolerance=0.2):
@@ -593,8 +600,17 @@ async def generar_examen_docx(
     consignas  = datos_json.get("consignas") or []
     titulo_doc = datos_json.get("titulo") or f"{tipo_evaluacion} de {nombre_materia}"
 
+    if not isinstance(consignas, list):
+        consignas = []
+    consignas = [
+        consigna for consigna in consignas
+        if isinstance(consigna, dict) and str(consigna.get("enunciado") or "").strip()
+    ]
     if not consignas:
-        raise HTTPException(status_code=500, detail=f"El LLM no devolvió consignas: {str(datos_json)[:300]}")
+        raise HTTPException(
+            status_code=502,
+            detail="La IA no devolvió consignas válidas. Revisá los temas o intentá nuevamente.",
+        )
 
     doc = Document()
     _encabezado_documento(
@@ -606,11 +622,11 @@ async def generar_examen_docx(
 
     for idx, c in enumerate(consignas, start=1):
         tipo      = c.get("tipo", "")
-        enunciado = c.get("enunciado", "")
+        enunciado = _remove_generated_number(c.get("enunciado", ""), idx)
         items     = c.get("items", []) or []
-        doc.add_paragraph(f"{idx}) [{tipo}] {enunciado}", style="Heading 3")
+        doc.add_paragraph(f"{idx}. [{tipo}] {enunciado}", style="Heading 3")
         for j, it in enumerate(items, start=1):
-            doc.add_paragraph(f"{j}. {it}")
+            doc.add_paragraph(f"{j}. {_remove_generated_number(it, j)}")
 
     buffer = BytesIO()
     doc.save(buffer)
@@ -859,7 +875,14 @@ async def generar_podcast_audio(
 
 # ── presentacion ──────────────────────────────────────────────────────────────
 
-async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[UploadFile]):
+async def generar_presentacion_pptx(
+    tema: str,
+    id_docente: str,
+    file: Optional[UploadFile],
+    titulo_solicitado: Optional[str] = None,
+    id_escuela: Optional[str] = None,
+    id_curso: Optional[str] = None,
+):
     """
     Genera un PPTX con contenido académico normalizado y layout controlado.
     El flujo actual llama a la IA para obtener estructura de diapositivas,
@@ -874,11 +897,36 @@ async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[U
         except PDFExtractionError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
+    tema = _coerce_ppt_text(tema)
+    if not tema:
+        raise HTTPException(status_code=400, detail="Indicá el tema principal de la presentación.")
+
     prompt_base = (
         f"Genera una presentación académica breve y visualmente clara sobre '{tema}'. "
         "Usa un estilo de diapositivas con título corto, subtítulo opcional y 3 a 6 ideas principales por slide. "
         "Prioriza contenido breve, conceptos resumidos y estructura fácil de leer."
     )
+
+    if titulo_solicitado and titulo_solicitado.strip():
+        prompt_base += f"\nUsá este título general para la presentación: {titulo_solicitado.strip()}."
+
+    if id_escuela or id_curso:
+        nombre_escuela, nombre_materia, division, contenido_minimo, bibliografia = \
+            _datos_escuela_materia(id_escuela, id_curso)
+        contexto_materia = (
+            f"\n\nCONTEXTO ACADÉMICO:\n"
+            f"Institución: {nombre_escuela}\n"
+            f"Asignatura: {nombre_materia}\n"
+            f"Curso/división: {division}\n"
+        )
+        if contenido_minimo:
+            contexto_materia += f"Contenidos mínimos:\n{contenido_minimo}\n"
+        if bibliografia:
+            contexto_materia += "Bibliografía:\n" + "\n".join(
+                f"- {item if isinstance(item, str) else str(item)}"
+                for item in bibliografia
+            )
+        prompt_base += contexto_materia
 
     if contenido_pdf:
         # El PDF ya fue convertido a texto. No volver a enviarlo al extractor
@@ -897,34 +945,28 @@ async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[U
         )
 
     if isinstance(datos_json, str):
-        texto = datos_json.strip()
-        match = re.search(r"\{.*\}", texto, re.DOTALL)
-        if match:
-            try:
-                datos_json = json.loads(match.group(0))
-            except Exception:
-                datos_json = {}
-        else:
-            try:
-                datos_json = json.loads(texto)
-            except Exception:
-                datos_json = {}
-
+        datos_json = RAGOrchestrator._parse_json(datos_json)
+    datos_json = _recuperar_json_anidado(datos_json)
     if not isinstance(datos_json, dict):
-        datos_json = {}
+        raise HTTPException(
+            status_code=502,
+            detail="La IA respondió con un formato inválido. No se creó una presentación.",
+        )
 
-    titulo_presentacion = _coerce_ppt_text(datos_json.get("titulo") or tema, tema)
-    slides_raw = datos_json.get("slides") or []
+    titulo_presentacion = _coerce_ppt_text(
+        titulo_solicitado or datos_json.get("titulo") or tema,
+        tema,
+    )
+    slides_raw = datos_json.get("slides") or datos_json.get("diapositivas") or []
     if not isinstance(slides_raw, list):
         slides_raw = []
 
     slides = _normalize_ppt_slide_payload(slides_raw)
     if not slides:
-        slides = [{
-            "titulo": titulo_presentacion,
-            "subtitulo": "",
-            "contenido": ["Objetivo principal", "Conceptos clave", "Conclusiones relevantes"],
-        }]
+        raise HTTPException(
+            status_code=502,
+            detail="La IA no devolvió diapositivas válidas. Revisá el tema o intentá nuevamente.",
+        )
 
     prs = Presentation()
     prs.slide_width = PPT_SLIDE_WIDTH
@@ -955,7 +997,8 @@ async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[U
     for i, slide_data in enumerate(slides, start=1):
         _create_slide_layout(prs, slide_data, index=i)
 
-    nombre_archivo = f"{titulo_presentacion.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
+    nombre_base = re.sub(r"[^\w.-]+", "_", titulo_presentacion, flags=re.UNICODE).strip("._-")[:80]
+    nombre_archivo = f"{nombre_base or 'Presentacion'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
     os.makedirs("archivos_generados", exist_ok=True)
     ruta_local = f"archivos_generados/{nombre_archivo}"
     prs.save(ruta_local)
@@ -976,6 +1019,8 @@ async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[U
             f"{id_docente}/{nombre_archivo}", 60 * 60 * 24 * 7
         )
         url_publica = signed.get("signedURL") or signed.get("signedUrl") or signed.get("signed_url")
+        if not url_publica:
+            raise RuntimeError("El almacenamiento no devolvió un enlace de descarga.")
     except Exception as e:
         print(f"❌ No pude subir la presentación a Supabase Storage: {e}")
         raise HTTPException(
@@ -998,7 +1043,11 @@ async def generar_presentacion_pptx(tema: str, id_docente: str, file: Optional[U
             "descripcion":     f"Presentación generada automáticamente sobre el tema '{tema}'",
         }).execute()
     except Exception as e:
-        print(f"⚠️ No pude registrar en BD: {e}")
+        print(f"⚠️ No pude registrar la presentación en la biblioteca: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="La presentación se generó y subió, pero no se pudo registrar en la biblioteca.",
+        ) from e
 
     return {
         "status":         "success",

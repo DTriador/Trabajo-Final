@@ -17,8 +17,8 @@ const INITIAL_FORM = {
   nombre_clase: '', nombre_presentacion: '', nombre_guia: '',
   numero_preguntas: 10, fecha: '', duracion: '', pdf: null,
   materia_examen: '', fecha_examen: '',
-  temas_examen: [],
-  temas_recuperatorio: [],
+  temas_examen: '',
+  temas_recuperatorio: '',
 
   examen_tipos: {
     desarrollo:      { activo: false, cantidad: 0 },

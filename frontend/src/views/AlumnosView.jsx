@@ -75,12 +75,16 @@ const AlumnosView = ({ onVolver }) => {
   const [mostrarForm, setMostrarForm] = useState(false);
   const [nuevoAlumno, setNuevoAlumno] = useState({ nombre: '', apellido: '', email: '' });
   const [editandoId, setEditandoId]   = useState(null);
-  const [editData, setEditData]       = useState({ nombre: '', apellido: '', email: '', id_escuela: '' });
+  const [editData, setEditData]       = useState({ nombre: '', apellido: '', email: '', id_escuela: '', id_curso: '' });
   const [guardando, setGuardando]     = useState(false);
   const [tabActiva, setTabActiva]     = useState('alumnos');
   const [escuelas, setEscuelas]       = useState([]);
+  const [cursosPorEscuela, setCursosPorEscuela] = useState({});
+  const [cargandoCursos, setCargandoCursos] = useState(true);
   const [escuelaNueva, setEscuelaNueva] = useState('');
+  const [cursoNuevo, setCursoNuevo] = useState('');
   const [escuelaImportacion, setEscuelaImportacion] = useState('');
+  const [cursoImportacion, setCursoImportacion] = useState('');
   const [alumnoEnEdicion, setAlumnoEnEdicion] = useState(null);
   const [errorCarga, setErrorCarga] = useState('');
 
@@ -91,6 +95,7 @@ const AlumnosView = ({ onVolver }) => {
     try {
       const res = await api.get(`/alumnos/${userId}`);
       setAlumnos(res.data || []);
+      setErrorCarga('');
     } catch (e) {
       console.error('Error cargando alumnos:', e);
       setErrorCarga(e.response?.data?.detail || 'No se pudieron cargar los alumnos.');
@@ -100,18 +105,51 @@ const AlumnosView = ({ onVolver }) => {
 
   useEffect(() => {
     cargar();
-    if (userId) proyectosService.getEscuelas(userId).then(setEscuelas).catch(console.error);
+    if (!userId) return undefined;
+    let activo = true;
+    setCargandoCursos(true);
+    proyectosService.getEscuelas(userId)
+      .then(async (datosEscuelas) => {
+        const listaEscuelas = datosEscuelas || [];
+        const cursos = await Promise.all(listaEscuelas.map(async escuela => {
+          try {
+            const lista = await proyectosService.getCursosPorEscuela(escuela.id_escuela);
+            return [escuela.id_escuela, lista || []];
+          } catch (error) {
+            console.error(`Error cargando asignaturas de ${escuela.nombre_escuela}:`, error);
+            return [escuela.id_escuela, []];
+          }
+        }));
+        if (activo) {
+          setEscuelas(listaEscuelas);
+          setCursosPorEscuela(Object.fromEntries(cursos));
+        }
+      })
+      .catch(error => {
+        console.error('Error cargando instituciones:', error);
+        if (activo) setErrorCarga('No se pudieron cargar las instituciones y asignaturas.');
+      })
+      .finally(() => {
+        if (activo) setCargandoCursos(false);
+      });
+    return () => { activo = false; };
   }, [userId]);
 
   const handleAgregar = async () => {
     if (!nuevoAlumno.nombre.trim() || !nuevoAlumno.email.trim()) {
       alert('Nombre y email son obligatorios'); return;
     }
-    if (!escuelaNueva) { alert('Seleccioná el colegio del alumno'); return; }
+    if (!escuelaNueva || !cursoNuevo) {
+      alert('Seleccioná la institución y la asignatura/curso del alumno.');
+      return;
+    }
     try {
-      await api.post('/alumnos', { ...nuevoAlumno, id_docente: userId, id_escuela: escuelaNueva });
+      await api.post('/alumnos', {
+        ...nuevoAlumno, id_docente: userId, id_escuela: escuelaNueva, id_curso: cursoNuevo,
+      });
       setNuevoAlumno({ nombre: '', apellido: '', email: '' });
       setEscuelaNueva('');
+      setCursoNuevo('');
       setMostrarForm(false);
       cargar();
     } catch (e) { alert(`Error: ${e.response?.data?.detail || e.message}`); }
@@ -120,13 +158,16 @@ const AlumnosView = ({ onVolver }) => {
   const iniciarEdicion = (alumno) => {
     setEditandoId(alumno.id_alumno);
     setAlumnoEnEdicion(alumno);
-    setEditData({ nombre: alumno.nombre, apellido: alumno.apellido || '', email: alumno.email, id_escuela: alumno.id_escuela || '' });
+    setEditData({
+      nombre: alumno.nombre, apellido: alumno.apellido || '', email: alumno.email,
+      id_escuela: alumno.id_escuela || '', id_curso: alumno.id_curso || '',
+    });
   };
 
   const cancelarEdicion = () => {
     setEditandoId(null);
     setAlumnoEnEdicion(null);
-    setEditData({ nombre: '', apellido: '', email: '', id_escuela: '' });
+    setEditData({ nombre: '', apellido: '', email: '', id_escuela: '', id_curso: '' });
   };
 
   const guardarEdicion = async (id) => {
@@ -141,6 +182,7 @@ const AlumnosView = ({ onVolver }) => {
         email:    editData.email.trim(),
         id_docente: userId,
         id_escuela: editData.id_escuela || null,
+        id_curso: editData.id_curso || null,
       });
       setAlumnos(prev => prev.map(a => a.id_alumno === id ? { ...a, ...editData } : a));
       cancelarEdicion();
@@ -155,6 +197,15 @@ const AlumnosView = ({ onVolver }) => {
       setAlumnos(prev => prev.filter(a => a.id_alumno !== id));
       if (editandoId === id) cancelarEdicion();
     } catch (e) { alert(`Error: ${e.response?.data?.detail || e.message}`); }
+  };
+
+  const buscarCurso = (idCurso) => Object.values(cursosPorEscuela)
+    .flat()
+    .find(curso => curso.id_curso === idCurso);
+
+  const etiquetaCurso = (idCurso) => {
+    const curso = buscarCurso(idCurso);
+    return curso ? `${curso.nombre_materia} — ${curso.division}` : 'Sin asignatura/curso';
   };
 
   const filtrados = alumnos.filter(a =>
@@ -249,15 +300,33 @@ const AlumnosView = ({ onVolver }) => {
             <select
               aria-label="Colegio para importar"
               value={escuelaImportacion}
-              onChange={e => setEscuelaImportacion(e.target.value)}
+              onChange={e => {
+                setEscuelaImportacion(e.target.value);
+                setCursoImportacion('');
+              }}
               style={{ ...INPUT_TOOLBAR, flex: '0 1 220px', minWidth: '180px' }}
             >
               <option value="">Colegio para importar…</option>
               {escuelas.map(escuela => <option key={escuela.id_escuela} value={escuela.id_escuela}>{escuela.nombre_escuela}</option>)}
             </select>
+            <select
+              aria-label="Asignatura y curso para importar"
+              value={cursoImportacion}
+              onChange={e => setCursoImportacion(e.target.value)}
+              disabled={!escuelaImportacion || cargandoCursos}
+              style={{ ...INPUT_TOOLBAR, flex: '0 1 240px', minWidth: '190px', opacity: !escuelaImportacion || cargandoCursos ? 0.6 : 1 }}
+            >
+              <option value="">{cargandoCursos ? 'Cargando asignaturas…' : 'Asignatura y curso…'}</option>
+              {(cursosPorEscuela[escuelaImportacion] || []).map(curso => (
+                <option key={curso.id_curso} value={curso.id_curso}>
+                  {curso.nombre_materia} — {curso.division}
+                </option>
+              ))}
+            </select>
             <ImportarAlumnosExcel
               idDocente={userId}
               idEscuela={escuelaImportacion}
+              idCurso={cursoImportacion}
               onImportado={cargar}
             />
           </div>
@@ -275,9 +344,23 @@ const AlumnosView = ({ onVolver }) => {
               <input type="text"  placeholder="Nombre *"  value={nuevoAlumno.nombre}   onChange={e => setNuevoAlumno({ ...nuevoAlumno, nombre:   e.target.value })} style={{ ...INPUT_TOOLBAR, minWidth: '120px' }} />
               <input type="text"  placeholder="Apellido"  value={nuevoAlumno.apellido} onChange={e => setNuevoAlumno({ ...nuevoAlumno, apellido: e.target.value })} style={{ ...INPUT_TOOLBAR, minWidth: '120px' }} />
               <input type="email" placeholder="Email *"   value={nuevoAlumno.email}    onChange={e => setNuevoAlumno({ ...nuevoAlumno, email:    e.target.value })} style={{ ...INPUT_TOOLBAR, minWidth: '180px' }} />
-              <select value={escuelaNueva} onChange={e => setEscuelaNueva(e.target.value)} style={{ ...INPUT_TOOLBAR, minWidth: '180px' }}>
+              <select value={escuelaNueva} onChange={e => { setEscuelaNueva(e.target.value); setCursoNuevo(''); }} style={{ ...INPUT_TOOLBAR, minWidth: '180px' }}>
                 <option value="">Colegio *</option>
                 {escuelas.map(escuela => <option key={escuela.id_escuela} value={escuela.id_escuela}>{escuela.nombre_escuela}</option>)}
+              </select>
+              <select
+                aria-label="Asignatura y curso del alumno"
+                value={cursoNuevo}
+                onChange={e => setCursoNuevo(e.target.value)}
+                disabled={!escuelaNueva || cargandoCursos}
+                style={{ ...INPUT_TOOLBAR, minWidth: '200px', opacity: !escuelaNueva || cargandoCursos ? 0.6 : 1 }}
+              >
+                <option value="">{cargandoCursos ? 'Cargando asignaturas…' : 'Asignatura y curso *'}</option>
+                {(cursosPorEscuela[escuelaNueva] || []).map(curso => (
+                  <option key={curso.id_curso} value={curso.id_curso}>
+                    {curso.nombre_materia} — {curso.division}
+                  </option>
+                ))}
               </select>
               <button onClick={handleAgregar} style={BTN.guardar}>Guardar</button>
             </div>
@@ -302,13 +385,14 @@ const AlumnosView = ({ onVolver }) => {
                     <th style={{ padding: '8px 12px' }}>Apellido</th>
                     <th style={{ padding: '8px 12px' }}>Email</th>
                     <th style={{ padding: '8px 12px' }}>Colegio</th>
+                    <th style={{ padding: '8px 12px' }}>Asignatura / curso</th>
                     <th style={{ padding: '8px 12px', textAlign: 'right' }}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {gruposPorEscuela.flatMap(grupo => [
                     <tr key={`${grupo.id}-heading`}>
-                      <td colSpan={5} style={{ padding: '8px 12px', background: '#dcfce7', color: '#166534', fontWeight: 'bold' }}>
+                      <td colSpan={6} style={{ padding: '8px 12px', background: '#dcfce7', color: '#166534', fontWeight: 'bold' }}>
                          {grupo.nombre} ({grupo.alumnos.length})
                       </td>
                     </tr>,
@@ -322,9 +406,25 @@ const AlumnosView = ({ onVolver }) => {
                             <td style={{ padding: '8px 10px' }}><input type="text"  value={editData.apellido} onChange={e => setEditData({ ...editData, apellido: e.target.value })} style={INPUT_BASE} /></td>
                             <td style={{ padding: '8px 10px' }}><input type="email" value={editData.email}    onChange={e => setEditData({ ...editData, email:    e.target.value })} style={INPUT_BASE} /></td>
                             <td style={{ padding: '8px 10px' }}>
-                              <select value={editData.id_escuela} onChange={e => setEditData({ ...editData, id_escuela: e.target.value })} style={INPUT_BASE}>
+                              <select value={editData.id_escuela} onChange={e => setEditData({ ...editData, id_escuela: e.target.value, id_curso: '' })} style={INPUT_BASE}>
                                 <option value="">Sin colegio</option>
                                 {escuelas.map(escuela => <option key={escuela.id_escuela} value={escuela.id_escuela}>{escuela.nombre_escuela}</option>)}
+                              </select>
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <select
+                                aria-label={`Asignatura y curso de ${a.nombre}`}
+                                value={editData.id_curso}
+                                onChange={e => setEditData({ ...editData, id_curso: e.target.value })}
+                                disabled={!editData.id_escuela || cargandoCursos}
+                                style={{ ...INPUT_BASE, opacity: !editData.id_escuela || cargandoCursos ? 0.6 : 1 }}
+                              >
+                                <option value="">Sin asignatura/curso</option>
+                                {(cursosPorEscuela[editData.id_escuela] || []).map(curso => (
+                                  <option key={curso.id_curso} value={curso.id_curso}>
+                                    {curso.nombre_materia} — {curso.division}
+                                  </option>
+                                ))}
                               </select>
                             </td>
                             <td style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -340,6 +440,7 @@ const AlumnosView = ({ onVolver }) => {
                             <td style={{ padding: '8px 12px' }}>{a.apellido || '-'}</td>
                             <td style={{ padding: '8px 12px' }}>{a.email}</td>
                             <td style={{ padding: '8px 12px' }}>{escuelas.find(escuela => escuela.id_escuela === a.id_escuela)?.nombre_escuela || 'Sin colegio'}</td>
+                            <td style={{ padding: '8px 12px' }}>{etiquetaCurso(a.id_curso)}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                                <button onClick={() => iniciarEdicion(a)} style={BTN.editar} title="Editar alumno" aria-label={`Editar a ${a.nombre}`}>Editar</button>
                                <button onClick={() => handleEliminar(a.id_alumno, a.nombre)} style={BTN.eliminar} title="Eliminar alumno" aria-label={`Eliminar a ${a.nombre}`}>Eliminar</button>

@@ -1,7 +1,8 @@
 // src/components/dashboard/ToolForm.jsx
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
+import { formatDateInput, parseDateInput } from '../../utils/dateInput';
 
 // Herramientas que requieren selección de escuela/materia
 const TOOLS_CON_ESCUELA = [
@@ -15,8 +16,17 @@ const TOOLS_CON_FUENTE = [
 ];
 
 const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuelaChange, onClose }) => {
-  const { useAuth: _u, ..._ } = { useAuth };
   const { user } = useAuth();
+  const [generando, setGenerando] = useState(false);
+  const [mensajeError, setMensajeError] = useState('');
+  const [completado, setCompletado] = useState(false);
+  const solicitudEnCurso = useRef(false);
+
+  useEffect(() => {
+    setGenerando(false);
+    setMensajeError('');
+    setCompletado(false);
+  }, [tool.id]);
 
   // Cuando se selecciona una materia, auto-poblar materia_examen
   const handleCursoChange = (e) => {
@@ -33,8 +43,44 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
 
   const handleGenerar = async () => {
     const userId = user?.id || user?.id_docente || user?.user?.id;
-    alert(`Iniciando generación de ${tool.title}... Kōkua está trabajando.`);
-    onClose();
+    if (solicitudEnCurso.current || generando || completado) return;
+
+    if (!userId) {
+      setMensajeError('No se pudo identificar al docente. Cerrá sesión y volvé a ingresar.');
+      return;
+    }
+
+    const campoFecha = ['examen', 'recuperatorio'].includes(tool.id)
+      ? 'fecha_examen'
+      : ['planificacion', 'apunte', 'preguntas'].includes(tool.id) ? 'fecha' : null;
+    const fechaIngresada = campoFecha ? formData[campoFecha] || '' : '';
+    const fechaNormalizada = campoFecha ? parseDateInput(fechaIngresada) : '';
+    const fechaObligatoria = ['planificacion', 'examen', 'recuperatorio'].includes(tool.id);
+
+    if ((fechaObligatoria && !fechaIngresada.trim()) || (fechaIngresada.trim() && fechaNormalizada === null)) {
+      setMensajeError('Ingresá una fecha válida en formato DD/MM/AAAA.');
+      return;
+    }
+
+    if (tool.id === 'presentacion' && !formData.tema?.trim()) {
+      setMensajeError('Ingresá el tema principal de la presentación.');
+      return;
+    }
+
+    const temasExamen = String(formData.temas_examen || '')
+      .split(/\r?\n/).map(tema => tema.trim()).filter(Boolean);
+    const temasRecuperatorio = String(formData.temas_recuperatorio || '')
+      .split(/\r?\n/).map(tema => tema.trim()).filter(Boolean);
+
+    if (['examen', 'recuperatorio'].includes(tool.id)
+      && (tool.id === 'recuperatorio' ? temasRecuperatorio : temasExamen).length === 0) {
+      setMensajeError(`Ingresá al menos un tema para el ${tool.id === 'recuperatorio' ? 'recuperatorio' : 'examen'}.`);
+      return;
+    }
+
+    setGenerando(true);
+    solicitudEnCurso.current = true;
+    setMensajeError('');
 
     try {
       let res;
@@ -46,7 +92,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
         payload.append('id_escuela', formData.id_escuela);
         payload.append('id_curso', formData.id_curso);
         payload.append('nombre_clase', formData.nombre_clase);
-        payload.append('fecha', formData.fecha);
+        payload.append('fecha', fechaNormalizada);
         payload.append('duracion', formData.duracion);
         payload.append('tema', formData.tema);
         if (formData.pdf) payload.append('file', formData.pdf);
@@ -56,8 +102,11 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       // ── presentacion ───────────────────────────────────────────────────────
       else if (tool.id === 'presentacion') {
         const payload = new FormData();
-        payload.append('tema', formData.nombre_presentacion || formData.tema);
+        payload.append('tema', formData.tema.trim());
+        payload.append('titulo_presentacion', formData.nombre_presentacion.trim());
         payload.append('id_docente', userId);
+        payload.append('id_escuela', formData.id_escuela || '');
+        payload.append('id_curso', formData.id_curso || '');
         if (formData.pdf) payload.append('file', formData.pdf);
         res = await api.post(`/generar/presentacion`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
@@ -65,14 +114,15 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       // ── apunte ─────────────────────────────────────────────────────────────
       else if (tool.id === 'apunte') {
         if (formData.fuente_contenido === 'pdf' && !formData.pdf) {
-          alert('Seleccionaste "Subir PDF" pero no adjuntaste ningún archivo.'); return;
+          setMensajeError('Seleccionaste “Subir PDF” pero no adjuntaste ningún archivo.');
+          return;
         }
         const payload = new FormData();
         payload.append('tema', formData.tema);
         payload.append('id_docente', userId);
         payload.append('id_escuela', formData.id_escuela || '');
         payload.append('id_curso', formData.id_curso || '');
-        payload.append('fecha', formData.fecha || '');
+        payload.append('fecha', fechaNormalizada || '');
         if (formData.fuente_contenido === 'pdf' && formData.pdf) payload.append('file', formData.pdf);
         res = await api.post(`/generar/apunte`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
@@ -80,7 +130,8 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       // ── preguntas ──────────────────────────────────────────────────────────
       else if (tool.id === 'preguntas') {
         if (formData.fuente_contenido === 'pdf' && !formData.pdf) {
-          alert('Seleccionaste "Subir PDF" pero no adjuntaste ningún archivo.'); return;
+          setMensajeError('Seleccionaste “Subir PDF” pero no adjuntaste ningún archivo.');
+          return;
         }
         const payload = new FormData();
         payload.append('tema', formData.tema);
@@ -89,7 +140,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
         payload.append('numero_preguntas', formData.numero_preguntas);
         payload.append('id_escuela', formData.id_escuela || '');
         payload.append('id_curso', formData.id_curso || '');
-        payload.append('fecha', formData.fecha || '');
+        payload.append('fecha', fechaNormalizada || '');
         if (formData.fuente_contenido === 'pdf' && formData.pdf) payload.append('file', formData.pdf);
         res = await api.post(`/generar/preguntas`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
@@ -98,7 +149,10 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       else if (tool.id === 'examen' || tool.id === 'recuperatorio') {
         const tipos = formData.examen_tipos;
         const algunoActivo = Object.values(tipos).some(t => t.activo && t.cantidad > 0);
-        if (!algunoActivo) { alert("Marcá al menos una actividad e indicá la cantidad de ítems."); return; }
+        if (!algunoActivo) {
+          setMensajeError('Marcá al menos una actividad e indicá la cantidad de ítems.');
+          return;
+        }
         const payload = new FormData();
         payload.append('id_docente', userId);
         payload.append('id_escuela', formData.id_escuela || '');
@@ -106,9 +160,9 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
         payload.append('materia',    formData.materia_examen || '');
         const esRecuperatorio = tool.id === 'recuperatorio';
         payload.append('temas', JSON.stringify(
-          esRecuperatorio ? formData.temas_recuperatorio || [] : formData.temas_examen || []
+          esRecuperatorio ? temasRecuperatorio : temasExamen
         ));
-        payload.append('fecha_examen', formData.fecha_examen);
+        payload.append('fecha_examen', fechaNormalizada);
         payload.append('tipos', JSON.stringify(tipos));
         if (formData.pdf) payload.append('file', formData.pdf);
         res = await api.post(`/generar/${esRecuperatorio ? 'recuperatorio' : 'examen'}`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -117,7 +171,8 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       // ── podcast ────────────────────────────────────────────────────────────
       else if (tool.id === 'podcast') {
         if (formData.fuente_contenido === 'pdf' && !formData.pdf) {
-          alert('Seleccionaste "Subir PDF" pero no adjuntaste ningún archivo.'); return;
+          setMensajeError('Seleccionaste “Subir PDF” pero no adjuntaste ningún archivo.');
+          return;
         }
         const payload = new FormData();
         payload.append('tema', formData.tema);
@@ -132,7 +187,8 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       // ── sopa_letras ────────────────────────────────────────────────────────
       else if (tool.id === 'sopa_letras') {
         if (formData.fuente_contenido === 'pdf' && !formData.pdf) {
-          alert('Seleccionaste "Subir PDF" pero no adjuntaste ningún archivo.'); return;
+          setMensajeError('Seleccionaste “Subir PDF” pero no adjuntaste ningún archivo.');
+          return;
         }
         const payload = new FormData();
         payload.append('id_docente', userId);
@@ -149,7 +205,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       // ── crucigrama ─────────────────────────────────────────────────────────
       else if (tool.id === 'crucigrama') {
         if (formData.fuente_contenido === 'pdf' && !formData.pdf) {
-          alert('Seleccionaste "Subir PDF" pero no adjuntaste ningún archivo.');
+          setMensajeError('Seleccionaste “Subir PDF” pero no adjuntaste ningún archivo.');
           return;
         }
         const payload = new FormData();
@@ -167,7 +223,7 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       // ── unir_flechas ───────────────────────────────────────────────────────
       else if (tool.id === 'unir_flechas') {
         if (formData.fuente_contenido === 'pdf' && !formData.pdf) {
-          alert('Seleccionaste "Subir PDF" pero no adjuntaste ningún archivo.');
+          setMensajeError('Seleccionaste “Subir PDF” pero no adjuntaste ningún archivo.');
           return;
         }
         const payload = new FormData();
@@ -185,17 +241,25 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
         res = await api.post(`/generar/${tool.id}?tema=${formData.tema}&id_docente=${userId}`);
       }
 
-      if (res?.data?.status === "success") {
-        alert(`¡Listo! El archivo se ha guardado en tu biblioteca.`);
-        if (res.data.download_url) window.open(res.data.download_url, '_blank');
-        if (res.data.download_url_respuestas) {
-          window.open(res.data.download_url_respuestas, '_blank');
-        }
+      if (res?.data?.status !== 'success') {
+        throw new Error(res?.data?.message || 'El servidor no confirmó que el recurso se haya guardado.');
+      }
+
+      setCompletado(true);
+      if (res.data.download_url) window.open(res.data.download_url, '_blank', 'noopener,noreferrer');
+      if (res.data.download_url_respuestas) {
+        window.open(res.data.download_url_respuestas, '_blank', 'noopener,noreferrer');
       }
     } catch (err) {
       console.error("Error en el pipeline de generación:", err);
       const detail = err.response?.data?.detail;
-      alert(`Error ${err.response?.status}: ${typeof detail === 'object' ? JSON.stringify(detail) : detail}`);
+      const detalleLegible = typeof detail === 'string'
+        ? detail
+        : detail ? JSON.stringify(detail) : err.message;
+      setMensajeError(`No se pudo generar ${tool.title.toLowerCase()}${err.response?.status ? ` (HTTP ${err.response.status})` : ''}: ${detalleLegible}`);
+    } finally {
+      setGenerando(false);
+      solicitudEnCurso.current = false;
     }
   };
 
@@ -259,8 +323,9 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
   const SoloFecha = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
       <label style={{ color: 'white', fontSize: '1.2rem', marginLeft: '8px' }}>Fecha</label>
-      <input type="date" className={inputClass}
-        value={formData.fecha || ''}
+      <input type="text" inputMode="numeric" placeholder="DD/MM/AAAA" className={inputClass}
+        aria-label="Fecha en formato día, mes y año"
+        value={formatDateInput(formData.fecha || '')}
         onChange={e => setFormData({ ...formData, fecha: e.target.value })} />
     </div>
   );
@@ -301,8 +366,9 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
           {/* Fecha del examen */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label style={{ color: 'white', fontSize: '1.2rem', marginLeft: '8px' }}>Fecha del examen</label>
-            <input type="date" required className={inputClass}
-              value={formData.fecha_examen}
+            <input type="text" required inputMode="numeric" placeholder="DD/MM/AAAA" className={inputClass}
+              aria-label="Fecha del examen en formato día, mes y año"
+              value={formatDateInput(formData.fecha_examen || '')}
               onChange={e => setFormData({ ...formData, fecha_examen: e.target.value })} />
           </div>
 
@@ -312,12 +378,11 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
             </label>
             <textarea required className={inputClass}
               placeholder="Ingresá uno o varios temas, separados por línea"
-              value={(tool.id === 'recuperatorio' ? formData.temas_recuperatorio : formData.temas_examen || []).join('\n')}
-              onChange={e => setFormData({
-                ...formData,
-                [tool.id === 'recuperatorio' ? 'temas_recuperatorio' : 'temas_examen']:
-                  e.target.value.split('\n').map(tema => tema.trim()).filter(Boolean),
-              })} />
+              value={tool.id === 'recuperatorio' ? formData.temas_recuperatorio || '' : formData.temas_examen || ''}
+              onChange={e => setFormData(prev => ({
+                ...prev,
+                [tool.id === 'recuperatorio' ? 'temas_recuperatorio' : 'temas_examen']: e.target.value,
+              }))} />
           </div>
 
           {/* Campo materia libre */}
@@ -414,8 +479,9 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
           <div className="grid grid-cols-2 gap-4">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <label style={{ color: 'white', fontSize: '1.2rem', marginLeft: '8px' }}>Fecha de la clase</label>
-              <input type="date" required className={inputClass}
-                value={formData.fecha}
+              <input type="text" required inputMode="numeric" placeholder="DD/MM/AAAA" className={inputClass}
+                aria-label="Fecha de la clase en formato día, mes y año"
+                value={formatDateInput(formData.fecha || '')}
                 onChange={e => setFormData({ ...formData, fecha: e.target.value })} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -551,14 +617,41 @@ const ToolForm = ({ tool, formData, setFormData, escuelas, cursos, handleEscuela
       )}
 
       {/* ── Botones ────────────────────────────────────────────────────────── */}
+      {generando && (
+        <div role="status" aria-live="polite" style={{
+          borderRadius: '12px', padding: '12px 16px', color: '#fff',
+          background: 'rgba(14,165,233,0.18)', border: '1px solid rgba(125,211,252,0.55)',
+          textAlign: 'center', fontSize: '1.05rem',
+        }}>
+          <span aria-hidden="true">⏳ </span>Generando {tool.title.toLowerCase()}… No cierres esta ventana.
+        </div>
+      )}
+      {completado && (
+        <div role="status" aria-live="polite" style={{
+          borderRadius: '12px', padding: '12px 16px', color: '#dcfce7',
+          background: 'rgba(22,163,74,0.18)', border: '1px solid rgba(134,239,172,0.55)',
+          textAlign: 'center', fontSize: '1.05rem',
+        }}>
+          Recurso generado y guardado en tu biblioteca.
+        </div>
+      )}
+      {mensajeError && (
+        <div role="alert" aria-live="assertive" style={{
+          borderRadius: '12px', padding: '12px 16px', color: '#fee2e2',
+          background: 'rgba(220,38,38,0.18)', border: '1px solid rgba(252,165,165,0.6)',
+          fontSize: '1rem',
+        }}>
+          {mensajeError}
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '10px' }}>
-        <button type="button" onClick={onClose}
-          style={{ borderRadius: '50px', padding: '12px 35px', border: '2px solid #9ca3af', backgroundColor: 'transparent', color: '#d1d5db', fontSize: '1.2rem', cursor: 'pointer', fontWeight: 'bold' }}>
+        <button type="button" onClick={onClose} disabled={generando}
+          style={{ borderRadius: '50px', padding: '12px 35px', border: '2px solid #9ca3af', backgroundColor: 'transparent', color: '#d1d5db', fontSize: '1.2rem', cursor: generando ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: generando ? 0.5 : 1 }}>
           Cancelar
         </button>
-        <button type="button" onClick={handleGenerar}
-          style={{ borderRadius: '50px', padding: '12px 35px', backgroundColor: '#ff7eb9', border: 'none', color: 'white', fontSize: '1.2rem', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(255,126,185,0.4)' }}>
-          Empezar Magia ✨
+        <button type="button" onClick={handleGenerar} disabled={generando || completado}
+          style={{ borderRadius: '50px', padding: '12px 35px', backgroundColor: '#ff7eb9', border: 'none', color: 'white', fontSize: '1.2rem', cursor: generando || completado ? 'not-allowed' : 'pointer', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(255,126,185,0.4)', opacity: generando || completado ? 0.6 : 1 }}>
+          {generando ? 'Generando…' : completado ? 'Generado ✓' : 'Empezar Magia ✨'}
         </button>
       </div>
     </div>

@@ -48,6 +48,69 @@ class BulkAsistenciaIn(BaseModel):
     registros: List[AsistenciaIn]
 
 
+def _validar_asignacion_alumno(id_docente: str, id_escuela: Optional[str], id_curso: Optional[str]):
+    """Valida que el curso pertenezca a la escuela elegida por este docente."""
+    escuela_id = (id_escuela or "").strip() or None
+    curso_id = (id_curso or "").strip() or None
+
+    if curso_id:
+        cursos = (
+            supabase.table("cursos")
+            .select("id_curso, id_escuela")
+            .eq("id_curso", curso_id)
+            .limit(1)
+            .execute()
+            .data or []
+        )
+        if not cursos:
+            raise HTTPException(status_code=400, detail="La asignatura seleccionada no existe.")
+
+        escuela_del_curso = cursos[0].get("id_escuela")
+        if escuela_id and escuela_del_curso != escuela_id:
+            raise HTTPException(
+                status_code=400,
+                detail="La asignatura seleccionada no pertenece a la institución indicada.",
+            )
+        escuela_id = escuela_del_curso
+
+    if escuela_id:
+        escuelas = (
+            supabase.table("escuelas")
+            .select("id_escuela")
+            .eq("id_escuela", escuela_id)
+            .eq("id_docente", id_docente)
+            .limit(1)
+            .execute()
+            .data or []
+        )
+        if not escuelas:
+            raise HTTPException(
+                status_code=400,
+                detail="La institución seleccionada no pertenece a este docente.",
+            )
+
+    return escuela_id, curso_id
+
+
+def _alumnos_del_docente(id_docente: str):
+    """Devuelve todos los alumnos del docente (id, email, curso y escuela), paginando de a 1000."""
+    filas, desde = [], 0
+    while True:
+        lote = (
+            supabase.table("alumnos")
+            .select("id_alumno, email, id_curso, id_escuela")
+            .eq("id_docente", id_docente)
+            .range(desde, desde + 999)
+            .execute()
+            .data or []
+        )
+        filas.extend(lote)
+        if len(lote) < 1000:
+            break
+        desde += 1000
+    return filas
+
+
 # ── Alumnos ───────────────────────────────────────────────────────────────────
 
 @router.get("/{id_docente}")
@@ -58,13 +121,29 @@ async def listar_alumnos(id_docente: str):
 
 @router.post("")
 async def crear_alumno(alumno: AlumnoIn):
-    res = supabase.table("alumnos").insert(alumno.dict()).execute()
+    datos = alumno.model_dump()
+    datos["id_escuela"], datos["id_curso"] = _validar_asignacion_alumno(
+        alumno.id_docente, alumno.id_escuela, alumno.id_curso
+    )
+    res = supabase.table("alumnos").insert(datos).execute()
     return res.data[0] if res.data else {}
 
 
 @router.put("/{id_alumno}")
 async def actualizar_alumno(id_alumno: str, alumno: AlumnoIn):
-    res = supabase.table("alumnos").update(alumno.dict()).eq("id_alumno", id_alumno).execute()
+    datos = alumno.model_dump()
+    datos["id_escuela"], datos["id_curso"] = _validar_asignacion_alumno(
+        alumno.id_docente, alumno.id_escuela, alumno.id_curso
+    )
+    res = (
+        supabase.table("alumnos")
+        .update(datos)
+        .eq("id_alumno", id_alumno)
+        .eq("id_docente", alumno.id_docente)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Alumno no encontrado para este docente.")
     return res.data[0] if res.data else {}
 
 
@@ -82,6 +161,9 @@ async def importar_csv(
     file: UploadFile = File(...),
 ):
     try:
+        escuela_id, curso_id = _validar_asignacion_alumno(
+            id_docente, id_escuela, id_curso
+        )
         contenido = (await file.read()).decode("utf-8-sig")
         muestra = contenido[:4096]
         try:
@@ -108,7 +190,13 @@ async def importar_csv(
                 detail="El CSV debe incluir las columnas nombre y email (o correo)",
             )
 
-        creados, errores = 0, []
+        # Alumnos que el docente ya tiene, agrupados por email, para no duplicarlos.
+        por_email = {}
+        for existente in _alumnos_del_docente(id_docente):
+            clave = (existente.get("email") or "").strip().lower()
+            por_email.setdefault(clave, []).append(existente)
+
+        creados, asignados, ya_existian, errores = 0, 0, 0, []
         for numero_fila, row in enumerate(reader, start=2):
             try:
                 nombre = (row.get(nombre_col) or "").strip()
@@ -117,18 +205,61 @@ async def importar_csv(
                 if not nombre or not email or "@" not in email:
                     errores.append(f"Fila {numero_fila}: nombre y email válidos son obligatorios")
                     continue
-                supabase.table("alumnos").insert({
+
+                previos = por_email.setdefault(email, [])
+
+                # 1) Ya está cargado en este mismo curso: no se duplica.
+                if any(p.get("id_curso") == curso_id for p in previos):
+                    ya_existian += 1
+                    continue
+
+                # 2) Importación sin curso: si el alumno ya existe, no se vuelve a crear.
+                if curso_id is None and previos:
+                    ya_existian += 1
+                    continue
+
+                # 3) Existe pero sin curso asignado: se le asigna el curso elegido.
+                sin_curso = next((p for p in previos if not p.get("id_curso")), None)
+                if sin_curso is not None:
+                    (
+                        supabase.table("alumnos")
+                        .update({"id_curso": curso_id, "id_escuela": escuela_id})
+                        .eq("id_alumno", sin_curso["id_alumno"])
+                        .eq("id_docente", id_docente)
+                        .execute()
+                    )
+                    sin_curso["id_curso"] = curso_id
+                    sin_curso["id_escuela"] = escuela_id
+                    asignados += 1
+                    continue
+
+                # 4) Alumno nuevo, o ya cargado en otra asignatura: se crea un registro para este curso.
+                res = supabase.table("alumnos").insert({
                     "id_docente": id_docente,
-                    "id_curso":   id_curso,
-                    "id_escuela": id_escuela,
+                    "id_curso":   curso_id,
+                    "id_escuela": escuela_id,
                     "nombre":     nombre,
                     "apellido":   apellido,
                     "email":      email,
                 }).execute()
+                nuevo = (res.data or [{}])[0] if res is not None else {}
+                previos.append({
+                    "id_alumno": nuevo.get("id_alumno"),
+                    "email": email,
+                    "id_curso": curso_id,
+                    "id_escuela": escuela_id,
+                })
                 creados += 1
             except Exception as e:
                 errores.append(f"{row.get(email_col) or numero_fila}: {str(e)}")
-        return {"creados": creados, "errores": errores}
+        return {
+            "creados": creados,
+            "asignados": asignados,
+            "ya_existian": ya_existian,
+            "errores": errores,
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

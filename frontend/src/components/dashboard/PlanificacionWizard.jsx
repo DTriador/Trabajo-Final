@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import proyectosService from '../../services/proyectosService';
+import { parseDateInput } from '../../utils/dateInput';
 import {
   S,
   PasoMateria,
@@ -326,8 +327,18 @@ export default function PlanificacionWizard({ onClose, onPlanificacionGuardada }
     try {
       const userId = user?.id || user?.id_docente || user?.user?.id;
 
-      // Filtrar clases sin fecha válida antes de enviar
-      const clasesValidas = clases.filter(c => c.fecha);
+      // El usuario puede editar las fechas con texto; antes de guardar se
+      // convierten y validan para mantener el formato ISO esperado por la API.
+      const fechasNormalizadas = clases.map(c => ({
+        ...c,
+        fecha: parseDateInput(c.fecha),
+      }));
+      if (fechasNormalizadas.some((c, i) => clases[i].fecha && c.fecha === null)) {
+        alert('❌ Hay fechas incompletas o inválidas. Usá el formato DD/MM/AAAA.');
+        setGuardando(false);
+        return;
+      }
+      const clasesValidas = fechasNormalizadas.filter(c => c.fecha);
       if (clasesValidas.length === 0) {
         alert('❌ Ninguna clase tiene fecha asignada. Revisá el paso de calendario.');
         setGuardando(false);
